@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>GCS — 지상 통제소</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Courier New', monospace; background: #0a0e14; color: #cdd6f4; height: 100vh; display: flex; flex-direction: column; }
+header { background: #1e2030; padding: 8px 16px; border-bottom: 1px solid #363a4f; display: flex; align-items: center; gap: 12px; }
+header h1 { font-size: 14px; color: #8aadf4; letter-spacing: 2px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: #ed8796; flex-shrink: 0; }
+.dot.on { background: #a6e3a1; }
+#ws-status { font-size: 11px; color: #6e738d; }
+.main { display: flex; flex: 1; overflow: hidden; }
+#map { flex: 1; z-index: 0; }
+.panel { width: 320px; background: #1e2030; display: flex; flex-direction: column; border-left: 1px solid #363a4f; overflow: hidden; }
+.sec { padding: 12px; border-bottom: 1px solid #363a4f; }
+.sec h2 { font-size: 10px; color: #6e738d; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 8px; }
+select, input[type=number] {
+  background: #181926; color: #cdd6f4; border: 1px solid #363a4f;
+  padding: 6px 8px; width: 100%; font-family: inherit; font-size: 12px; border-radius: 3px;
+}
+select:focus, input:focus { outline: none; border-color: #8aadf4; }
+.info { font-size: 11px; color: #a6e3a1; margin-top: 6px; min-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.info.disconnected { color: #6e738d; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.grid1 { display: grid; grid-template-columns: 1fr; gap: 6px; }
+button {
+  background: #363a4f; color: #cdd6f4; border: 1px solid #494d64;
+  padding: 7px 10px; font-family: inherit; font-size: 12px; cursor: pointer; border-radius: 3px;
+  transition: background 0.1s;
+}
+button:hover:not(:disabled) { background: #494d64; }
+button:disabled { opacity: 0.35; cursor: not-allowed; }
+.arm    { border-color: #a6e3a1; color: #a6e3a1; }
+.disarm { border-color: #ed8796; color: #ed8796; }
+.takeoff{ border-color: #8aadf4; color: #8aadf4; }
+.land   { border-color: #eed49f; color: #eed49f; }
+.rtl    { border-color: #f5a97f; color: #f5a97f; }
+.goto   { border-color: #c6a0f6; color: #c6a0f6; }
+.goto-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-top: 8px; }
+.goto-row label { font-size: 10px; color: #6e738d; display: block; margin-bottom: 2px; }
+.log-header { padding: 8px 12px 4px; border-bottom: 1px solid #363a4f; font-size: 10px; color: #6e738d; letter-spacing: 1px; text-transform: uppercase; }
+#cmd-log { flex: 1; overflow-y: auto; padding: 4px 0; }
+.entry { padding: 3px 12px; font-size: 11px; line-height: 1.6; border-bottom: 1px solid #181926; }
+.entry.ok   { color: #a6e3a1; }
+.entry.fail { color: #ed8796; }
+.entry.info { color: #8aadf4; }
+.entry.warn { color: #eed49f; }
+</style>
+</head>
+<body>
+<header>
+  <h1>GCS / 지상 통제소</h1>
+  <span class="dot" id="dot"></span>
+  <span id="ws-status">연결 중...</span>
+</header>
+<div class="main">
+  <div id="map"></div>
+  <div class="panel">
+
+    <div class="sec">
+      <h2>드론 선택</h2>
+      <select id="sel">
+        <option value="">— 선택 —</option>
+        <option value="drone-01">drone-01</option>
+        <option value="drone-02">drone-02</option>
+        <option value="drone-03">drone-03</option>
+      </select>
+      <div class="info disconnected" id="info"></div>
+    </div>
+
+    <div class="sec">
+      <h2>명령</h2>
+      <div class="grid2">
+        <button class="arm"    data-cmd="ARM"    disabled>시동</button>
+        <button class="disarm" data-cmd="DISARM" disabled>시동 끄기</button>
+        <button class="takeoff"data-cmd="TAKEOFF"disabled>이륙</button>
+        <button class="land"   data-cmd="LAND"   disabled>착륙</button>
+      </div>
+      <div class="grid1" style="margin-top:6px">
+        <button class="rtl" data-cmd="RTL" disabled>귀환 (RTL)</button>
+      </div>
+      <div class="goto-row">
+        <div><label>위도</label><input type="number" id="g-lat" step="0.0001" placeholder="37.5665"></div>
+        <div><label>경도</label><input type="number" id="g-lon" step="0.0001" placeholder="126.978"></div>
+        <div><label>고도 m</label><input type="number" id="g-alt" value="30" min="1" max="500"></div>
+      </div>
+      <div class="grid1" style="margin-top:6px">
+        <button class="goto" data-cmd="GOTO" disabled>이동 ▸</button>
+      </div>
+    </div>
+
+    <div class="log-header">명령 로그</div>
+    <div id="cmd-log"></div>
+  </div>
+</div>
+<script>
+// ── Leaflet ─────────────────────────────────────────────────────
+const map = L.map('map').setView([37.5665, 126.978], 14);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© OpenStreetMap', maxZoom: 19,
+}).addTo(map);
+
+function makeIcon(armed) {
+  const c = armed ? '#a6e3a1' : '#8aadf4';
+  return L.divIcon({
+    className: '',
+    html: `<svg width="28" height="28" viewBox="0 0 28 28" xmlns="http://www.w3.org/2000/svg">
+      <polygon points="14,2 26,24 14,18 2,24" fill="${c}" stroke="#0a0e14" stroke-width="1.5"/>
+    </svg>`,
+    iconSize: [28, 28], iconAnchor: [14, 14],
+  });
+}
+
+const markers = {};
+const states  = {};
+let gotoPin   = null;  // 지도 클릭 목표 핀
+
+// 지도 클릭 → 이동 목표 좌표 설정
+map.on('click', e => {
+  const lat = e.latlng.lat.toFixed(6);
+  const lon = e.latlng.lng.toFixed(6);
+  document.getElementById('g-lat').value = lat;
+  document.getElementById('g-lon').value = lon;
+
+  // 목표 핀 (빨간 X 마커)
+  if (gotoPin) gotoPin.remove();
+  gotoPin = L.marker([lat, lon], {
+    icon: L.divIcon({
+      className: '',
+      html: `<svg width="22" height="22" viewBox="0 0 22 22" xmlns="http://www.w3.org/2000/svg">
+        <line x1="3" y1="3" x2="19" y2="19" stroke="#ed8796" stroke-width="2.5" stroke-linecap="round"/>
+        <line x1="19" y1="3" x2="3" y2="19" stroke="#ed8796" stroke-width="2.5" stroke-linecap="round"/>
+      </svg>`,
+      iconSize: [22, 22], iconAnchor: [11, 11],
+    }),
+  }).addTo(map).bindPopup(`목표: ${lat}, ${lon}`).openPopup();
+});
+
+function updateMarker(t) {
+  if (!t.lat || !t.lon) return;
+  if (!markers[t.drone_id]) {
+    markers[t.drone_id] = L.marker([t.lat, t.lon], { icon: makeIcon(t.armed) })
+      .addTo(map).bindPopup('');
+  }
+  const m = markers[t.drone_id];
+  m.setLatLng([t.lat, t.lon]);
+  m.setIcon(makeIcon(t.armed));
+  m.setPopupContent(
+    `<b style="color:#8aadf4">${t.drone_id}</b><br>` +
+    `모드: ${t.mode || '—'}  ` +
+    `${t.armed ? '<b style="color:#a6e3a1">ARMED</b>' : 'DISARMED'}<br>` +
+    `고도: ${t.alt?.toFixed(1)} m<br>` +
+    `속도: ${t.groundspeed?.toFixed(1)} m/s<br>` +
+    `배터리: ${t.battery_pct?.toFixed(0)} %<br>` +
+    `방향: ${t.heading}°`
+  );
+}
+
+// ── UI ──────────────────────────────────────────────────────────
+const sel   = document.getElementById('sel');
+const info  = document.getElementById('info');
+const log   = document.getElementById('cmd-log');
+const btns  = document.querySelectorAll('[data-cmd]');
+
+function refreshInfo() {
+  const t = states[sel.value];
+  if (!t) { info.textContent = ''; info.className = 'info disconnected'; return; }
+  info.className = t.connected ? 'info' : 'info disconnected';
+  info.textContent =
+    `${t.connected ? '●' : '○'} ${t.mode || '?'}  ` +
+    `${t.armed ? 'ARMED' : 'DISARMED'}  ` +
+    `BAT ${t.battery_pct?.toFixed(0)}%  ` +
+    `ALT ${t.alt?.toFixed(0)}m`;
+}
+
+function refreshBtns() {
+  const t = states[sel.value];
+  btns.forEach(b => b.disabled = !sel.value || !t?.connected);
+}
+
+sel.addEventListener('change', () => { refreshInfo(); refreshBtns(); });
+
+// ── 명령 전송 ──────────────────────────────────────────────────
+async function sendCmd(cmd, params = {}) {
+  const drone_id = sel.value;
+  if (!drone_id) return;
+  addLog(`→ ${drone_id}  ${cmd}`, 'info');
+  try {
+    const r = await fetch('/api/command', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ drone_id, cmd, params }),
+    });
+    const d = await r.json();
+    addLog(r.ok ? `  ↳ 전송됨` : `  ↳ 오류: ${d.error || r.statusText}`, r.ok ? 'ok' : 'fail');
+  } catch (e) {
+    addLog(`  ↳ 네트워크 오류: ${e.message}`, 'fail');
+  }
+}
+
+// GOTO: 드론이 지상에서 이륙한 후에만 전송 가능 — 이 한 곳만 실제 대기 필요
+function waitAirborne(id, timeoutMs = 15000) {
+  return new Promise(resolve => {
+    const deadline = Date.now() + timeoutMs;
+    (function check() {
+      if ((states[id]?.relative_alt ?? 0) >= 2) return resolve(true);
+      if (Date.now() >= deadline) return resolve(false);
+      setTimeout(check, 100);
+    })();
+  });
+}
+
+btns.forEach(b => b.addEventListener('click', async () => {
+  const cmd = b.dataset.cmd;
+  const id  = sel.value;
+  const st  = () => states[id] || {};
+
+  if (cmd === 'GOTO') {
+    const lat = parseFloat(document.getElementById('g-lat').value);
+    const lon = parseFloat(document.getElementById('g-lon').value);
+    const alt = parseFloat(document.getElementById('g-alt').value) || 30;
+    if (isNaN(lat) || isNaN(lon)) { addLog('이동: 지도를 클릭하거나 좌표를 입력하세요', 'warn'); return; }
+    if (gotoPin) { gotoPin.remove(); gotoPin = null; }
+
+    if (!st().armed) {
+      // TCP 순서 보장 → 딜레이 없이 연속 전송, ArduCopter가 순서대로 처리
+      await sendCmd('SET_MODE', { mode: 'GUIDED' });
+      await sendCmd('ARM');
+      await sendCmd('TAKEOFF', { alt });
+      addLog(`이륙 중 — 공중 확인 후 이동 전송`, 'info');
+      if (!await waitAirborne(id)) { addLog('이륙 타임아웃', 'warn'); }
+    } else if ((st().relative_alt ?? 0) < 2) {
+      await sendCmd('TAKEOFF', { alt });
+      addLog(`이륙 중 — 공중 확인 후 이동 전송`, 'info');
+      if (!await waitAirborne(id)) { addLog('이륙 타임아웃', 'warn'); }
+    }
+
+    sendCmd('GOTO', { lat, lon, alt });
+
+  } else if (cmd === 'TAKEOFF') {
+    const alt = parseFloat(document.getElementById('g-alt').value) || 30;
+    if (!st().armed) {
+      await sendCmd('SET_MODE', { mode: 'GUIDED' });
+      await sendCmd('ARM');
+    }
+    sendCmd('TAKEOFF', { alt });
+
+  } else if (cmd === 'ARM') {
+    await sendCmd('SET_MODE', { mode: 'GUIDED' });
+    sendCmd('ARM');
+  } else {
+    sendCmd(cmd);
+  }
+}));
+
+// ── 로그 ────────────────────────────────────────────────────────
+function addLog(msg, cls = 'info') {
+  const ts = new Date().toTimeString().slice(0, 8);
+  const el = document.createElement('div');
+  el.className = `entry ${cls}`;
+  el.textContent = `[${ts}] ${msg}`;
+  log.prepend(el);
+  if (log.children.length > 200) log.lastChild.remove();
+}
+
+// ── WebSocket ────────────────────────────────────────────────────
+const dot  = document.getElementById('dot');
+const wsEl = document.getElementById('ws-status');
+let ws, retry;
+
+function connect() {
+  ws = new WebSocket(`ws://${location.host}/ws/gcs`);
+
+  ws.onopen = () => {
+    dot.classList.add('on');
+    wsEl.textContent = '연결됨';
+    clearTimeout(retry);
+    addLog('WebSocket 연결됨', 'ok');
+  };
+
+  ws.onmessage = e => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === 'telemetry') {
+      states[msg.drone_id] = msg;
+      updateMarker(msg);
+      if (sel.value === msg.drone_id) { refreshInfo(); refreshBtns(); }
+    } else if (msg.type === 'cmd_ack') {
+      const ok = msg.result === 'ACCEPTED';
+      addLog(`ACK ${msg.drone_id}  ${msg.cmd}: ${msg.result}`, ok ? 'ok' : 'fail');
+    }
+  };
+
+  ws.onclose = () => {
+    dot.classList.remove('on');
+    wsEl.textContent = '재연결 중...';
+    addLog('연결 끊김 — 3초 후 재연결', 'warn');
+    refreshBtns();
+    retry = setTimeout(connect, 3000);
+  };
+
+  ws.onerror = () => ws.close();
+}
+
+connect();
+</script>
+</body>
+</html>

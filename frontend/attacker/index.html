@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>Attacker — 패킷 스트림</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Courier New', monospace; background: #0a0e14; color: #cdd6f4; height: 100vh; display: flex; flex-direction: column; }
+header {
+  background: #1e2030; padding: 8px 16px; border-bottom: 1px solid #363a4f;
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+}
+header h1 { font-size: 14px; color: #ed8796; letter-spacing: 2px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: #ed8796; flex-shrink: 0; }
+.dot.on { background: #a6e3a1; }
+#ws-status { font-size: 11px; color: #6e738d; }
+.sep { flex: 1; }
+.ctrl { display: flex; align-items: center; gap: 6px; }
+.ctrl label { font-size: 11px; color: #6e738d; }
+select {
+  background: #181926; color: #cdd6f4; border: 1px solid #363a4f;
+  padding: 4px 8px; font-family: inherit; font-size: 11px; border-radius: 3px;
+}
+button {
+  background: #363a4f; color: #cdd6f4; border: 1px solid #494d64;
+  padding: 4px 10px; font-family: inherit; font-size: 11px; cursor: pointer; border-radius: 3px;
+}
+button:hover { background: #494d64; }
+button.paused { border-color: #eed49f; color: #eed49f; }
+#counter { font-size: 11px; color: #6e738d; min-width: 60px; text-align: right; }
+
+/* 컬럼 헤더 */
+.col-head {
+  display: flex; gap: 8px; padding: 4px 12px;
+  font-size: 10px; color: #494d64; border-bottom: 1px solid #363a4f;
+  letter-spacing: 0.5px; text-transform: uppercase; flex-shrink: 0;
+}
+.col-head .c-ts   { width: 66px; flex-shrink: 0; }
+.col-head .c-dir  { width: 14px; flex-shrink: 0; }
+.col-head .c-did  { width: 76px; flex-shrink: 0; }
+.col-head .c-name { width: 200px; flex-shrink: 0; }
+.col-head .c-hex  { flex: 1; }
+
+#stream { flex: 1; overflow-y: auto; }
+
+.pkt {
+  display: flex; align-items: baseline; gap: 8px;
+  padding: 3px 12px; border-bottom: 1px solid #181926; font-size: 11px; line-height: 1.6;
+}
+.pkt:hover { background: #1e2030; }
+.c-ts   { color: #6e738d; flex-shrink: 0; width: 66px; }
+.c-dir  { font-weight: bold; flex-shrink: 0; width: 14px; }
+.pkt.down .c-dir { color: #a6e3a1; }
+.pkt.up   .c-dir { color: #f5a97f; }
+.c-did  { color: #8aadf4; flex-shrink: 0; width: 76px; }
+.c-name { color: #c6a0f6; flex-shrink: 0; width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.c-hex  { color: #cdd6f4; opacity: 0.6; word-break: break-all; flex: 1; }
+.c-fields { color: #a6da95; font-size: 10px; opacity: 0.85; flex-shrink: 0; max-width: 380px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+</style>
+</head>
+<body>
+<header>
+  <h1>ATTACKER / 패킷 스트림</h1>
+  <span class="dot" id="dot"></span>
+  <span id="ws-status">연결 중...</span>
+  <div class="sep"></div>
+  <div class="ctrl">
+    <label>드론</label>
+    <select id="f-drone">
+      <option value="">ALL</option>
+      <option value="drone-01">drone-01</option>
+      <option value="drone-02">drone-02</option>
+      <option value="drone-03">drone-03</option>
+    </select>
+  </div>
+  <div class="ctrl">
+    <label>타입</label>
+    <select id="f-type">
+      <option value="">ALL</option>
+      <option value="HEARTBEAT">HEARTBEAT</option>
+      <option value="GLOBAL_POSITION_INT">GLOBAL_POSITION_INT</option>
+      <option value="VFR_HUD">VFR_HUD</option>
+      <option value="SYS_STATUS">SYS_STATUS</option>
+      <option value="COMMAND_LONG">COMMAND_LONG</option>
+      <option value="COMMAND_ACK">COMMAND_ACK</option>
+    </select>
+  </div>
+  <button id="btn-pause">일시정지</button>
+  <button id="btn-clear">초기화</button>
+  <span id="counter">0 pkts</span>
+</header>
+<div class="col-head">
+  <span class="c-ts">TIME</span>
+  <span class="c-dir">D</span>
+  <span class="c-did">DRONE</span>
+  <span class="c-name">MESSAGE</span>
+  <span class="c-hex">HEX / FIELDS</span>
+</div>
+<div id="stream"></div>
+<script>
+const stream   = document.getElementById('stream');
+const dot      = document.getElementById('dot');
+const wsEl     = document.getElementById('ws-status');
+const fDrone   = document.getElementById('f-drone');
+const fType    = document.getElementById('f-type');
+const btnPause = document.getElementById('btn-pause');
+const btnClear = document.getElementById('btn-clear');
+const counter  = document.getElementById('counter');
+
+const MAX = 200;
+let paused = false;
+let total  = 0;
+let ws, retry;
+
+btnPause.addEventListener('click', () => {
+  paused = !paused;
+  btnPause.classList.toggle('paused', paused);
+  btnPause.textContent = paused ? '▶ 재개' : '일시정지';
+});
+
+btnClear.addEventListener('click', () => {
+  stream.innerHTML = '';
+  total = 0;
+  counter.textContent = '0 pkts';
+});
+
+function fmtHex(h) {
+  return h.replace(/../g, m => m + ' ').trimEnd();
+}
+
+const SKIP_FIELDS = new Set(['target_system', 'target_component']);
+
+function fmtFields(fields) {
+  return Object.entries(fields)
+    .filter(([k]) => !SKIP_FIELDS.has(k))
+    .map(([k, v]) => {
+      if (typeof v === 'number' && !Number.isInteger(v)) v = v.toFixed(4);
+      return `${k}:${v}`;
+    })
+    .join('  ');
+}
+
+function addPacket(pkt) {
+  if (paused) return;
+  if (fDrone.value && pkt.drone_id !== fDrone.value) return;
+  if (fType.value  && pkt.msg_name  !== fType.value)  return;
+
+  total++;
+  counter.textContent = `${total} pkts`;
+
+  const ts  = new Date().toTimeString().slice(0, 8);
+  const dir = pkt.direction === 'up' ? '↑' : '↓';
+
+  const row = document.createElement('div');
+  row.className = `pkt ${pkt.direction}`;
+
+  const fieldsStr = pkt.fields ? fmtFields(pkt.fields) : '';
+  const hexShort  = fmtHex(pkt.hex.slice(0, 48)) + (pkt.hex.length > 48 ? '…' : '');
+
+  row.innerHTML =
+    `<span class="c-ts">${ts}</span>` +
+    `<span class="c-dir">${dir}</span>` +
+    `<span class="c-did">${pkt.drone_id}</span>` +
+    `<span class="c-name">${pkt.msg_name}</span>` +
+    `<span class="c-hex">${hexShort}</span>` +
+    (fieldsStr ? `<span class="c-fields">${fieldsStr}</span>` : '');
+
+  stream.prepend(row);
+  while (stream.children.length > MAX) stream.lastChild.remove();
+}
+
+function connect() {
+  ws = new WebSocket(`ws://${location.host}/ws/attacker`);
+
+  ws.onopen = () => {
+    dot.classList.add('on');
+    wsEl.textContent = '연결됨';
+    clearTimeout(retry);
+  };
+
+  ws.onmessage = e => {
+    const pkt = JSON.parse(e.data);
+    if (pkt.type === 'packet') addPacket(pkt);
+  };
+
+  ws.onclose = () => {
+    dot.classList.remove('on');
+    wsEl.textContent = '재연결 중...';
+    retry = setTimeout(connect, 3000);
+  };
+
+  ws.onerror = () => ws.close();
+}
+
+connect();
+</script>
+</body>
+</html>

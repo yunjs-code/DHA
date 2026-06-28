@@ -1,0 +1,9 @@
+logs/
+*.BIN
+*.bin
+*.tlog
+*.raw
+__pycache__/
+*.pyc
+.venv/
+venv/
