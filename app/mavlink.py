@@ -4,7 +4,17 @@ from __future__ import annotations
 import struct
 import logging
 
+from pymavlink.dialects.v20 import ardupilotmega as _mav2
+
 log = logging.getLogger(__name__)
+
+
+def _msg_name_from_id(msg_id: int) -> str:
+    """pymavlink 메시지 맵에서 msg_id → 메시지 이름 조회."""
+    cls = _mav2.mavlink_map.get(msg_id)
+    if cls and hasattr(cls, "msgname"):
+        return cls.msgname
+    return f"MSG_{msg_id}"
 
 _MAV_STX    = 0xFD
 _HDR_LEN    = 10   # STX(1)+LEN(1)+INCOMPAT(1)+COMPAT(1)+SEQ(1)+SYSID(1)+COMPID(1)+MSGID(3)
@@ -23,6 +33,9 @@ _ACK_RESULTS: dict[int, str] = {
     0: "ACCEPTED", 1: "TEMPORARILY_REJECTED", 2: "DENIED",
     3: "UNSUPPORTED", 4: "FAILED", 5: "IN_PROGRESS",
 }
+
+# SEQ 단조증가를 위해 모듈 레벨에서 단일 인스턴스 유지
+_mav_instance = _mav2.MAVLink(None, srcSystem=255, srcComponent=0)
 
 
 # ── 디코딩 ────────────────────────────────────────────────────────────────────
@@ -60,7 +73,9 @@ def decode(raw: bytes) -> dict | None:
             return base | _decode_command_long(payload)
         if msg_id == 77:
             return base | _decode_command_ack(payload)
-        return base | {"msg_name": "UNKNOWN"}
+        if msg_id == 193:
+            return base | _decode_ekf_status_report(payload)
+        return base | {"msg_name": _msg_name_from_id(msg_id)}
     except struct.error as exc:
         log.debug("decode struct error msg_id=%d: %s", msg_id, exc)
         return None
@@ -139,6 +154,24 @@ def _decode_command_ack(p: bytes) -> dict:
     }
 
 
+def _decode_ekf_status_report(p: bytes) -> dict:
+    # payload: vel_var(f) pos_h_var(f) pos_v_var(f) compass_var(f) terrain_var(f) flags(H)
+    if len(p) < 22:
+        return {"msg_name": "EKF_STATUS_REPORT", "ekf_ok": False, "flags": 0}
+    _, _, _, _, _, flags = struct.unpack_from("<fffffH", p)
+    # EKF_STATUS_FLAGS 비트 정의 (MAVLink 표준):
+    #   0x01 EKF_ATTITUDE, 0x02 EKF_VELOCITY_HORIZ, 0x04 EKF_VELOCITY_VERT
+    #   0x08 EKF_POS_HORIZ_REL, 0x10 EKF_POS_HORIZ_ABS, 0x20 EKF_POS_VERT_ABS
+    #   0x80 EKF_CONST_POS_MODE (GPS 없어서 제자리 고정 — 비행 불가)
+    # GUIDED 비행 최소 조건: attitude+vel+pos 켜짐, CONST_POS_MODE 꺼짐
+    ekf_ok = bool(
+        (flags & 0x07) == 0x07 and   # EKF_ATTITUDE | EKF_VELOCITY_HORIZ | EKF_VELOCITY_VERT
+        (flags & 0x18) and            # EKF_POS_HORIZ_REL(0x08) or EKF_POS_HORIZ_ABS(0x10)
+        not (flags & 0x80)            # NOT EKF_CONST_POS_MODE (GPS 유실 시 켜짐)
+    )
+    return {"msg_name": "EKF_STATUS_REPORT", "ekf_ok": ekf_ok, "flags": int(flags)}
+
+
 # ── 인코딩 ────────────────────────────────────────────────────────────────────
 
 def encode_command(target_sysid: int, cmd: str, params: dict) -> bytes | None:
@@ -185,14 +218,12 @@ def encode_command(target_sysid: int, cmd: str, params: dict) -> bytes | None:
         return None
 
     try:
-        from pymavlink.dialects.v20 import ardupilotmega as mav2
-        m = mav2.MAVLink(None, srcSystem=255, srcComponent=0)
-        msg = m.command_long_encode(
+        msg = _mav_instance.command_long_encode(
             target_sysid, 1,        # target_system, target_component
             mav_cmd, 0,             # command, confirmation
             p1, p2, p3, p4, p5, p6, p7,
         )
-        return bytes(msg.pack(m))
+        return bytes(msg.pack(_mav_instance))
     except Exception as exc:
         log.error("encode_command 실패 cmd=%s: %s", cmd, exc)
         return None

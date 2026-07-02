@@ -1,48 +1,47 @@
 #!/bin/bash
-# restart.sh — Phase1: SITL(TCP) → Phase2: MAVProxy(UDP 릴레이) → Phase3: FastAPI
-# SITL이 TCP 포트를 열 때까지 기다린 후 MAVProxy를 붙이므로 타이밍 실패 없음
+# restart.sh — arducopter 직접 실행 (sim_vehicle.py/xterm 우회)
+# ArduPilot SITL 포트 공식: SERIAL0 = 5760 + instance*10
+#   drone-01 (-I0): TCP 5760   (5762, 5763도 내부 사용)
+#   drone-02 (-I1): TCP 5770   (5772, 5773도 내부 사용)
+#   drone-03 (-I2): TCP 5780   (5782, 5783도 내부 사용)
 
 source "$HOME/venv-ardupilot/bin/activate"
 
-SIM_VEHICLE="$HOME/ardupilot/Tools/autotest/sim_vehicle.py"
-N=3
+ARDUCOPTER="$HOME/ardupilot/build/sitl/bin/arducopter"
+HOME_POS="37.566535,126.977969,0.0,0.0"
 
 # ── 1. 기존 프로세스 종료 ─────────────────────────────────────────────────────
 echo "== [1] 기존 프로세스 종료 =="
-pkill -f sim_vehicle 2>/dev/null || true
 pkill -f arducopter  2>/dev/null || true
+pkill -f sim_vehicle 2>/dev/null || true
 pkill -f mavproxy    2>/dev/null || true
 pkill -f uvicorn     2>/dev/null || true
 sleep 3
 
-# ── 2. MAVProxy 설치 확인 ─────────────────────────────────────────────────────
-echo "== [2] MAVProxy 확인 =="
-if ! command -v mavproxy.py >/dev/null 2>&1; then
-    echo "  MAVProxy 없음 → pip install mavproxy ..."
-    pip install mavproxy -q
-fi
-echo "  $(mavproxy.py --version 2>&1 | head -1)"
-
-# ── 3. SITL 기동 (--no-mavproxy: ArduCopter 단독, TCP 리슨) ──────────────────
-echo "== [3] SITL ${N}대 기동 (TCP 모드) =="
-for i in $(seq 0 $((N-1))); do
-    TCP=$((5760+i))
+# ── 2. arducopter 직접 기동 (xterm 없이) ─────────────────────────────────────
+echo "== [2] SITL 3대 직접 기동 =="
+for i in 0 1 2; do
+    PORT=$((5760+i*10))
     LOG="/tmp/sitl_drone-0$((i+1)).log"
-    echo "  drone-0$((i+1))  TCP:${TCP}  로그: ${LOG}"
-    python3 "$SIM_VEHICLE" \
-        -v ArduCopter \
+    WDIR="/tmp/sitl_instance_$i"
+    # 이전 파라미터 캐시(eeprom.bin) 삭제 — 인스턴스 간 파라미터 불일치 방지
+    rm -rf "$WDIR"
+    mkdir -p "$WDIR"
+    echo "  drone-0$((i+1))  TCP:${PORT}  로그: ${LOG}"
+    (cd "$WDIR" && "$ARDUCOPTER" \
+        --model + \
+        --speedup 2 \
         -I "$i" \
-        --speedup=1 \
-        -L Seoul \
-        --no-mavproxy \
-        < /dev/null > "$LOG" 2>&1 &
-    sleep 3
+        --home "$HOME_POS" \
+        --defaults /media/sf_uav/sitl_params.parm \
+        > "$LOG" 2>&1 &)
+    sleep 2
 done
 
-# ── 4. SITL TCP 포트가 열릴 때까지 폴링 (최대 90초) ─────────────────────────
-echo "== [4] SITL TCP 포트 대기 =="
-for i in $(seq 0 $((N-1))); do
-    PORT=$((5760+i))
+# ── 3. TCP 포트 대기 (최대 90초) ─────────────────────────────────────────────
+echo "== [3] TCP 포트 열림 대기 =="
+for i in 0 1 2; do
+    PORT=$((5760+i*10))
     printf "  TCP:%-4d " $PORT
     READY=0
     for t in $(seq 1 45); do
@@ -58,25 +57,9 @@ for i in $(seq 0 $((N-1))); do
     fi
 done
 
-# ── 5. MAVProxy 시작 — TCP(SITL) → UDP(서버) 릴레이 ─────────────────────────
-echo "== [5] MAVProxy UDP 릴레이 시작 =="
-for i in $(seq 0 $((N-1))); do
-    TCP=$((5760+i))
-    UDP=$((14560+i*10))
-    LOG="/tmp/mavproxy_drone-0$((i+1)).log"
-    echo "  drone-0$((i+1))  TCP:${TCP} → UDP:${UDP}  로그: ${LOG}"
-    mavproxy.py \
-        --master "tcp:127.0.0.1:${TCP}" \
-        --out "udpout:127.0.0.1:${UDP}" \
-        --daemon \
-        > "$LOG" 2>&1 &
-    sleep 2
-done
-
-# ── 6. FastAPI 서버 기동 ──────────────────────────────────────────────────────
+# ── 4. FastAPI 서버 기동 ──────────────────────────────────────────────────────
 echo ""
-echo "== [6] FastAPI 서버 기동 =="
+echo "== [4] FastAPI 서버 기동 =="
 echo "   브라우저: http://192.168.56.101:8000/gcs/"
-echo "   MAVProxy → UDP 연결까지 수초 내 완료 예상"
 cd /media/sf_uav
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload

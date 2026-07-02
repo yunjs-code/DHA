@@ -38,7 +38,7 @@ button.paused { border-color: #eed49f; color: #eed49f; }
 .col-head .c-ts   { width: 66px; flex-shrink: 0; }
 .col-head .c-dir  { width: 14px; flex-shrink: 0; }
 .col-head .c-did  { width: 76px; flex-shrink: 0; }
-.col-head .c-name { width: 200px; flex-shrink: 0; }
+.col-head .c-name { width: 240px; flex-shrink: 0; }
 .col-head .c-hex  { flex: 1; }
 
 #stream { flex: 1; overflow-y: auto; }
@@ -53,7 +53,9 @@ button.paused { border-color: #eed49f; color: #eed49f; }
 .pkt.down .c-dir { color: #a6e3a1; }
 .pkt.up   .c-dir { color: #f5a97f; }
 .c-did  { color: #8aadf4; flex-shrink: 0; width: 76px; }
-.c-name { color: #c6a0f6; flex-shrink: 0; width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.c-name { color: #c6a0f6; flex-shrink: 0; width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.c-name .kr { color: #c6a0f6; }
+.c-name .en { color: #6e738d; font-size: 10px; }
 .c-hex  { color: #cdd6f4; opacity: 0.6; word-break: break-all; flex: 1; }
 .c-fields { color: #a6da95; font-size: 10px; opacity: 0.85; flex-shrink: 0; max-width: 380px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 </style>
@@ -68,21 +70,18 @@ button.paused { border-color: #eed49f; color: #eed49f; }
     <label>드론</label>
     <select id="f-drone">
       <option value="">ALL</option>
-      <option value="drone-01">drone-01</option>
-      <option value="drone-02">drone-02</option>
-      <option value="drone-03">drone-03</option>
     </select>
   </div>
   <div class="ctrl">
     <label>타입</label>
     <select id="f-type">
-      <option value="">ALL</option>
-      <option value="HEARTBEAT">HEARTBEAT</option>
-      <option value="GLOBAL_POSITION_INT">GLOBAL_POSITION_INT</option>
-      <option value="VFR_HUD">VFR_HUD</option>
-      <option value="SYS_STATUS">SYS_STATUS</option>
-      <option value="COMMAND_LONG">COMMAND_LONG</option>
-      <option value="COMMAND_ACK">COMMAND_ACK</option>
+      <option value="">전체</option>
+      <option value="HEARTBEAT">상태신호 (HEARTBEAT)</option>
+      <option value="GLOBAL_POSITION_INT">GPS위치 (GLOBAL_POSITION_INT)</option>
+      <option value="VFR_HUD">비행계기 (VFR_HUD)</option>
+      <option value="SYS_STATUS">기체상태 (SYS_STATUS)</option>
+      <option value="COMMAND_LONG">명령전송 (COMMAND_LONG)</option>
+      <option value="COMMAND_ACK">명령응답 (COMMAND_ACK)</option>
     </select>
   </div>
   <button id="btn-pause">일시정지</button>
@@ -90,11 +89,11 @@ button.paused { border-color: #eed49f; color: #eed49f; }
   <span id="counter">0 pkts</span>
 </header>
 <div class="col-head">
-  <span class="c-ts">TIME</span>
-  <span class="c-dir">D</span>
-  <span class="c-did">DRONE</span>
-  <span class="c-name">MESSAGE</span>
-  <span class="c-hex">HEX / FIELDS</span>
+  <span class="c-ts">시각</span>
+  <span class="c-dir">방향</span>
+  <span class="c-did">드론</span>
+  <span class="c-name">메시지 유형</span>
+  <span class="c-hex">HEX / 파싱값</span>
 </div>
 <div id="stream"></div>
 <script>
@@ -106,6 +105,50 @@ const fType    = document.getElementById('f-type');
 const btnPause = document.getElementById('btn-pause');
 const btnClear = document.getElementById('btn-clear');
 const counter  = document.getElementById('counter');
+
+const MSG_KR = {
+  HEARTBEAT:                  '상태신호',
+  SYS_STATUS:                 '기체상태',
+  SYSTEM_TIME:                '시스템시간',
+  PING:                       '핑',
+  GPS_RAW_INT:                'GPS원시',
+  GPS_STATUS:                 'GPS상태',
+  RAW_IMU:                    'IMU원시',
+  SCALED_PRESSURE:            '기압계',
+  ATTITUDE:                   '기체자세',
+  ATTITUDE_QUATERNION:        '자세쿼터니언',
+  LOCAL_POSITION_NED:         '로컬위치',
+  GLOBAL_POSITION_INT:        'GPS위치',
+  RC_CHANNELS:                'RC채널',
+  RC_CHANNELS_RAW:            'RC채널원시',
+  SERVO_OUTPUT_RAW:           '서보출력',
+  MISSION_CURRENT:            '현재미션',
+  NAV_CONTROLLER_OUTPUT:      '항법출력',
+  VFR_HUD:                    '비행계기',
+  COMMAND_LONG:               '명령전송',
+  COMMAND_ACK:                '명령응답',
+  POSITION_TARGET_GLOBAL_INT: '목표위치',
+  BATTERY_STATUS:             '배터리상태',
+  AUTOPILOT_VERSION:          '자동항법버전',
+  LANDING_TARGET:             '착륙목표',
+  POWER_STATUS:               '전원상태',
+  MEMINFO:                    '메모리',
+  SCALED_IMU2:                'IMU2',
+  SCALED_IMU3:                'IMU3',
+  SCALED_PRESSURE2:           '기압계2',
+  SCALED_PRESSURE3:           '기압계3',
+  AHRS:                       '자세기준계',
+  AHRS2:                      '자세기준계2',
+  AHRS3:                      '자세기준계3',
+  SIMSTATE:                   '시뮬상태',
+  TERRAIN_REPORT:             '지형보고',
+  WIND:                       '풍속',
+  VIBRATION:                  '진동',
+  EKF_STATUS_REPORT:          '위치추정',
+  ESC_TELEMETRY_1_TO_4:       'ESC텔레메트리1-4',
+  ESC_TELEMETRY_5_TO_8:       'ESC텔레메트리5-8',
+};
+
 
 const MAX = 200;
 let paused = false;
@@ -157,11 +200,16 @@ function addPacket(pkt) {
   const fieldsStr = pkt.fields ? fmtFields(pkt.fields) : '';
   const hexShort  = fmtHex(pkt.hex.slice(0, 48)) + (pkt.hex.length > 48 ? '…' : '');
 
+  const kr = MSG_KR[pkt.msg_name];
+  const nameHtml = kr
+    ? `<span class="kr">${kr}</span> <span class="en">(${pkt.msg_name})</span>`
+    : pkt.msg_name;
+
   row.innerHTML =
     `<span class="c-ts">${ts}</span>` +
     `<span class="c-dir">${dir}</span>` +
     `<span class="c-did">${pkt.drone_id}</span>` +
-    `<span class="c-name">${pkt.msg_name}</span>` +
+    `<span class="c-name">${nameHtml}</span>` +
     `<span class="c-hex">${hexShort}</span>` +
     (fieldsStr ? `<span class="c-fields">${fieldsStr}</span>` : '');
 
@@ -170,7 +218,8 @@ function addPacket(pkt) {
 }
 
 function connect() {
-  ws = new WebSocket(`ws://${location.host}/ws/attacker`);
+  const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(`${wsProto}//${location.host}/ws/attacker`);
 
   ws.onopen = () => {
     dot.classList.add('on');
@@ -192,7 +241,15 @@ function connect() {
   ws.onerror = () => ws.close();
 }
 
-connect();
+fetch('/api/drones').then(r => r.json()).then(data => {
+  const sel = document.getElementById('f-drone');
+  Object.keys(data).sort().forEach(id => {
+    const opt = document.createElement('option');
+    opt.value = id;
+    opt.textContent = id;
+    sel.appendChild(opt);
+  });
+}).catch(() => {}).finally(connect);
 </script>
 </body>
 </html>

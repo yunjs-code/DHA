@@ -7,273 +7,801 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: 'Courier New', monospace; background: #0a0e14; color: #cdd6f4; height: 100vh; display: flex; flex-direction: column; }
-header { background: #1e2030; padding: 8px 16px; border-bottom: 1px solid #363a4f; display: flex; align-items: center; gap: 12px; }
-header h1 { font-size: 14px; color: #8aadf4; letter-spacing: 2px; }
-.dot { width: 8px; height: 8px; border-radius: 50%; background: #ed8796; flex-shrink: 0; }
+body { font-family: 'Courier New', monospace; background: #0a0e14; color: #cdd6f4; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+/* ── 헤더 ── */
+header {
+  background: #1e2030; padding: 6px 16px;
+  border-bottom: 2px solid #8aadf4;
+  display: flex; align-items: center; gap: 12px; flex-shrink: 0;
+}
+header h1 { font-size: 13px; color: #8aadf4; letter-spacing: 2px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: #ed8796; flex-shrink: 0; transition: background 0.3s; }
 .dot.on { background: #a6e3a1; }
 #ws-status { font-size: 11px; color: #6e738d; }
+.header-right { margin-left: auto; font-size: 11px; color: #6e738d; }
+
+/* ── 레이아웃 ── */
 .main { display: flex; flex: 1; overflow: hidden; }
 #map { flex: 1; z-index: 0; }
-.panel { width: 320px; background: #1e2030; display: flex; flex-direction: column; border-left: 1px solid #363a4f; overflow: hidden; }
-.sec { padding: 12px; border-bottom: 1px solid #363a4f; }
-.sec h2 { font-size: 10px; color: #6e738d; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 8px; }
-select, input[type=number] {
-  background: #181926; color: #cdd6f4; border: 1px solid #363a4f;
-  padding: 6px 8px; width: 100%; font-family: inherit; font-size: 12px; border-radius: 3px;
+.panel { width: 420px; background: #161922; display: flex; flex-direction: column; border-left: 1px solid #2a2f45; overflow: hidden; flex-shrink: 0; }
+
+/* ── 섹션 공통 ── */
+.sec { padding: 10px 12px; border-bottom: 1px solid #2a2f45; flex-shrink: 0; }
+.sec-title {
+  font-size: 9px; color: #4a5080; letter-spacing: 2px;
+  text-transform: uppercase; margin-bottom: 8px;
+  display: flex; align-items: center; justify-content: space-between;
 }
-select:focus, input:focus { outline: none; border-color: #8aadf4; }
-.info { font-size: 11px; color: #a6e3a1; margin-top: 6px; min-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.info.disconnected { color: #6e738d; }
-.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-.grid1 { display: grid; grid-template-columns: 1fr; gap: 6px; }
+
+/* ── 드론 카드 ── */
+.drone-card {
+  background: #1e2030; border: 2px solid #2a2f45; border-radius: 6px;
+  padding: 10px 12px; margin-bottom: 7px; cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+  position: relative; overflow: hidden;
+  user-select: none;
+}
+.drone-card:last-child { margin-bottom: 0; }
+.drone-card:hover { background: #20253a; }
+.drone-card.armed-airborne { border-color: #a6e3a1; }
+.drone-card.armed-ground   { border-color: #eed49f; }
+.drone-card.disconnected   { opacity: 0.45; }
+/* 선택: box-shadow 글로우 + 배경 강조 */
+.drone-card.selected {
+  background: #1a2245;
+  border-color: var(--sel-color, #8aadf4) !important;
+  box-shadow: 0 0 0 2px var(--sel-color, #8aadf4), 0 2px 16px rgba(138, 173, 244, 0.25);
+}
+.drone-card.selected:hover { background: #1e2a52; }
+
+.card-top { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; }
+.card-id { font-size: 15px; font-weight: bold; letter-spacing: 1px; min-width: 30px; }
+.card-mode {
+  font-size: 11px; padding: 2px 8px; border-radius: 10px;
+  border: 1px solid currentColor; letter-spacing: 0.5px;
+}
+.card-armed { font-size: 10px; padding: 2px 7px; border-radius: 10px; margin-left: auto; }
+.armed-badge    { background: rgba(166,227,161,0.15); color: #a6e3a1; border: 1px solid #a6e3a1; }
+.disarmed-badge { background: rgba(110,115,141,0.15); color: #6e738d; border: 1px solid #4a5080; }
+
+/* 선택 체크 아이콘 */
+.card-check {
+  width: 20px; height: 20px; border-radius: 4px; border: 2px solid #3a3f55;
+  flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: bold; transition: all 0.15s; color: #0a0e14;
+}
+
+.card-metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.metric { text-align: center; }
+.metric-val { font-size: 13px; color: #cdd6f4; }
+.metric-lbl { font-size: 9px; color: #4a5080; margin-top: 1px; }
+.ekf-ok  { color: #a6e3a1; }
+.ekf-bad { color: #ed8796; }
+
+.card-progress {
+  position: absolute; bottom: 0; left: 0; height: 2px;
+  background: #a6e3a1; transition: width 0.5s; opacity: 0.6;
+}
+
+/* ── 대상 선택 바 ── */
+.target-bar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; border-bottom: 1px solid #2a2f45;
+  flex-shrink: 0; flex-wrap: wrap;
+}
+.target-label { font-size: 11px; color: #6e738d; }
+.target-name  { font-size: 12px; color: #8aadf4; font-weight: bold; flex: 1; }
+.target-btns  { display: flex; gap: 5px; }
+.btn-sel {
+  font-size: 10px; padding: 3px 9px;
+  background: #2a2f45; color: #8aadf4; border: 1px solid #3a4060;
+  border-radius: 3px; cursor: pointer; letter-spacing: 0.5px;
+}
+.btn-sel:hover { background: #3a4060; }
+.btn-sel.active { background: #1a2040; border-color: #8aadf4; }
+.btn-desel {
+  font-size: 10px; padding: 3px 9px;
+  background: #2a2f45; color: #6e738d; border: 1px solid #3a4060;
+  border-radius: 3px; cursor: pointer;
+}
+.btn-desel:hover { background: #3a4060; color: #cdd6f4; }
+
+/* ── busy bar ── */
+#busy-bar {
+  display: none; font-size: 11px; color: #eed49f; background: #1e1a0a;
+  padding: 5px 12px; border-bottom: 1px solid #3a3010;
+  flex-shrink: 0;
+}
+#busy-bar.on { display: block; }
+
+/* ── 명령 버튼 ── */
+.cmd-sec { padding: 12px 12px; border-bottom: 1px solid #2a2f45; flex-shrink: 0; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.grid1 { display: grid; grid-template-columns: 1fr; gap: 7px; margin-top: 7px; }
+
 button {
-  background: #363a4f; color: #cdd6f4; border: 1px solid #494d64;
-  padding: 7px 10px; font-family: inherit; font-size: 12px; cursor: pointer; border-radius: 3px;
-  transition: background 0.1s;
+  background: #1e2030; color: #cdd6f4; border: 1px solid #3a3f55;
+  padding: 13px 12px; font-family: inherit; font-size: 14px; cursor: pointer;
+  border-radius: 5px; transition: all 0.12s; text-align: center; line-height: 1.3;
 }
-button:hover:not(:disabled) { background: #494d64; }
-button:disabled { opacity: 0.35; cursor: not-allowed; }
-.arm    { border-color: #a6e3a1; color: #a6e3a1; }
-.disarm { border-color: #ed8796; color: #ed8796; }
-.takeoff{ border-color: #8aadf4; color: #8aadf4; }
-.land   { border-color: #eed49f; color: #eed49f; }
-.rtl    { border-color: #f5a97f; color: #f5a97f; }
-.goto   { border-color: #c6a0f6; color: #c6a0f6; }
-.goto-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-top: 8px; }
-.goto-row label { font-size: 10px; color: #6e738d; display: block; margin-bottom: 2px; }
-.log-header { padding: 8px 12px 4px; border-bottom: 1px solid #363a4f; font-size: 10px; color: #6e738d; letter-spacing: 1px; text-transform: uppercase; }
+button:hover:not(:disabled) { filter: brightness(1.25); background: #252a40; }
+button:disabled { opacity: 0.25; cursor: not-allowed; }
+
+.en { font-size: 10px; color: inherit; opacity: 0.65; display: block; letter-spacing: 1px; margin-top: 2px; }
+
+.arm     { border-color: #a6e3a1; color: #a6e3a1; }
+.disarm  { border-color: #ed8796; color: #ed8796; }
+.takeoff { border-color: #8aadf4; color: #8aadf4; }
+.land    { border-color: #eed49f; color: #eed49f; }
+.rtl     { border-color: #f5a97f; color: #f5a97f; }
+.goto    { border-color: #c6a0f6; color: #c6a0f6; }
+
+.goto-row { display: grid; grid-template-columns: 1fr 1fr 0.8fr; gap: 6px; margin-top: 9px; }
+.goto-row label { font-size: 9px; color: #6e738d; display: block; margin-bottom: 3px; letter-spacing: 0.5px; }
+input[type=number] {
+  background: #12151e; color: #cdd6f4; border: 1px solid #3a3f55;
+  padding: 7px 8px; width: 100%; font-family: inherit; font-size: 11px; border-radius: 3px;
+}
+input:focus { outline: none; border-color: #8aadf4; }
+
+/* ── 로그 ── */
+.log-sec { display: flex; flex-direction: column; flex: 1; overflow: hidden; min-height: 0; }
+.log-filters {
+  padding: 7px 10px; border-bottom: 1px solid #2a2f45;
+  display: flex; flex-direction: column; gap: 5px; flex-shrink: 0;
+}
+.filter-row { display: flex; gap: 4px; align-items: center; }
+.filter-lbl { font-size: 9px; color: #4a5080; letter-spacing: 1px; min-width: 24px; }
+.f-btn {
+  font-size: 9px; padding: 2px 7px; border-radius: 10px;
+  background: #1e2030; color: #6e738d; border: 1px solid #3a3f55;
+  cursor: pointer; letter-spacing: 0.5px; transition: all 0.1s;
+}
+.f-btn:hover  { background: #252a40; }
+.f-btn.active { background: #2a3060; color: #8aadf4; border-color: #8aadf4; }
+.f-btn.f-ok.active   { background: #1a3020; color: #a6e3a1; border-color: #a6e3a1; }
+.f-btn.f-warn.active { background: #2a2010; color: #eed49f; border-color: #eed49f; }
+.f-btn.f-fail.active { background: #2a1020; color: #ed8796; border-color: #ed8796; }
+
 #cmd-log { flex: 1; overflow-y: auto; padding: 4px 0; }
-.entry { padding: 3px 12px; font-size: 11px; line-height: 1.6; border-bottom: 1px solid #181926; }
-.entry.ok   { color: #a6e3a1; }
-.entry.fail { color: #ed8796; }
-.entry.info { color: #8aadf4; }
-.entry.warn { color: #eed49f; }
+.entry {
+  padding: 3px 12px; font-size: 10px; line-height: 1.7;
+  border-bottom: 1px solid #12151e; display: flex; gap: 6px;
+}
+.entry-ts   { color: #4a5080; flex-shrink: 0; }
+.entry-did  { min-width: 52px; flex-shrink: 0; font-weight: bold; }
+.entry-msg  { flex: 1; word-break: break-all; }
+.entry.ok   .entry-msg { color: #a6e3a1; }
+.entry.fail .entry-msg { color: #ed8796; }
+.entry.info .entry-msg { color: #8aadf4; }
+.entry.warn .entry-msg { color: #eed49f; }
 </style>
 </head>
 <body>
+
 <header>
   <h1>GCS / 지상 통제소</h1>
   <span class="dot" id="dot"></span>
   <span id="ws-status">연결 중...</span>
+  <span class="header-right" id="header-time"></span>
 </header>
+
 <div class="main">
   <div id="map"></div>
   <div class="panel">
 
+    <!-- 드론 현황 카드 -->
     <div class="sec">
-      <h2>드론 선택</h2>
-      <select id="sel">
-        <option value="">— 선택 —</option>
-        <option value="drone-01">drone-01</option>
-        <option value="drone-02">drone-02</option>
-        <option value="drone-03">drone-03</option>
-      </select>
-      <div class="info disconnected" id="info"></div>
+      <div class="sec-title">드론 현황 <span id="conn-summary" style="color:#6e738d">—</span></div>
+      <div id="drone-cards"></div>
     </div>
 
-    <div class="sec">
-      <h2>명령</h2>
-      <div class="grid2">
-        <button class="arm"    data-cmd="ARM"    disabled>시동</button>
-        <button class="disarm" data-cmd="DISARM" disabled>시동 끄기</button>
-        <button class="takeoff"data-cmd="TAKEOFF"disabled>이륙</button>
-        <button class="land"   data-cmd="LAND"   disabled>착륙</button>
+    <!-- 대상 선택 -->
+    <div class="target-bar">
+      <span class="target-label">명령 대상</span>
+      <span class="target-name" id="target-name">—</span>
+      <div class="target-btns">
+        <button class="btn-sel" id="btn-all">전체</button>
+        <button class="btn-desel" id="btn-none">해제</button>
       </div>
-      <div class="grid1" style="margin-top:6px">
-        <button class="rtl" data-cmd="RTL" disabled>귀환 (RTL)</button>
+    </div>
+
+    <div id="busy-bar">⏳ 명령 수행 중...</div>
+
+    <!-- 명령 버튼 -->
+    <div class="cmd-sec">
+      <div class="grid2">
+        <button class="arm"     data-cmd="ARM"     disabled>시동<span class="en">ARM</span></button>
+        <button class="disarm"  data-cmd="DISARM"  disabled>시동 끄기<span class="en">DISARM</span></button>
+        <button class="takeoff" data-cmd="TAKEOFF" disabled>이륙<span class="en">TAKEOFF</span></button>
+        <button class="land"    data-cmd="LAND"    disabled>착륙<span class="en">LAND</span></button>
+      </div>
+      <div class="grid1">
+        <button class="rtl" data-cmd="RTL" disabled>귀환<span class="en">RTL — Return to Launch</span></button>
       </div>
       <div class="goto-row">
-        <div><label>위도</label><input type="number" id="g-lat" step="0.0001" placeholder="37.5665"></div>
-        <div><label>경도</label><input type="number" id="g-lon" step="0.0001" placeholder="126.978"></div>
-        <div><label>고도 m</label><input type="number" id="g-alt" value="30" min="1" max="500"></div>
+        <div><label>위도 LAT</label><input type="number" id="g-lat" step="0.0001" placeholder="37.5665"></div>
+        <div><label>경도 LON</label><input type="number" id="g-lon" step="0.0001" placeholder="126.978"></div>
+        <div><label>고도 ALT(m)</label><input type="number" id="g-alt" value="30" min="1" max="500"></div>
       </div>
-      <div class="grid1" style="margin-top:6px">
-        <button class="goto" data-cmd="GOTO" disabled>이동 ▸</button>
+      <div class="grid1">
+        <button class="goto" data-cmd="GOTO" disabled>이동 ▸<span class="en">GOTO — 지도 클릭으로 목표 설정</span></button>
       </div>
     </div>
 
-    <div class="log-header">명령 로그</div>
-    <div id="cmd-log"></div>
+    <!-- 명령 로그 + 필터 -->
+    <div class="log-sec">
+      <div class="log-filters">
+        <div class="filter-row">
+          <span class="filter-lbl">유형</span>
+          <button class="f-btn active" data-lv="all" >전체</button>
+          <button class="f-btn f-ok"   data-lv="ok"  >✓ OK</button>
+          <button class="f-btn f-warn" data-lv="warn">⚡ 경보</button>
+          <button class="f-btn f-fail" data-lv="fail">✗ 오류</button>
+          <button class="f-btn"        data-lv="info">ℹ 정보</button>
+        </div>
+        <div class="filter-row" id="drone-filter-row">
+          <span class="filter-lbl">드론</span>
+          <button class="f-btn active" data-did="all">전체</button>
+        </div>
+      </div>
+      <div id="cmd-log"></div>
+    </div>
+
   </div>
 </div>
+
 <script>
-// ── Leaflet ─────────────────────────────────────────────────────
+// ── 상태 ────────────────────────────────────────────────────────────
+const states  = {};
+const markers = {};
+let   DRONE_IDS = [];
+let   gotoPin   = null;
+let   busy      = false;
+
+// 다중 선택 상태 (Set)
+const selectedDrones = new Set();
+
+// 필터 상태
+let filterLevel = 'all';
+let filterDrone = 'all';
+const logStore  = [];
+
+// ── 시계 ───────────────────────────────────────────────────────────
+setInterval(() => {
+  document.getElementById('header-time').textContent =
+    new Date().toTimeString().slice(0, 8);
+}, 1000);
+
+// ── Leaflet 지도 ───────────────────────────────────────────────────
 const map = L.map('map').setView([37.5665, 126.978], 14);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
   attribution: '© OpenStreetMap', maxZoom: 19,
 }).addTo(map);
 
-function makeIcon(armed) {
-  const c = armed ? '#a6e3a1' : '#8aadf4';
+const DRONE_COLORS = {
+  'drone-01': '#8aadf4',
+  'drone-02': '#ee99a0',
+  'drone-03': '#a6e3a1',
+};
+
+const MODE_KO = {
+  'STABILIZE':   '안정(STABILIZE)',
+  'GUIDED':      '유도(GUIDED)',
+  'AUTO':        '자동(AUTO)',
+  'LOITER':      '정지(LOITER)',
+  'RTL':         '귀환(RTL)',
+  'LAND':        '착륙(LAND)',
+  'ALT_HOLD':    '고도유지',
+  'POSHOLD':     '위치유지',
+  'ACRO':        '곡예(ACRO)',
+  'BRAKE':       '제동(BRAKE)',
+  'CIRCLE':      '선회(CIRCLE)',
+  'SMART_RTL':   '스마트귀환',
+};
+function modeLabel(m) { return m ? (MODE_KO[m] || m) : '—'; }
+
+function makeIcon(droneId, armed, airborne) {
+  const base = DRONE_COLORS[droneId] || '#cdd6f4';
+  const fill = armed ? (airborne ? '#a6e3a1' : '#eed49f') : base;
+  const num  = droneId.replace('drone-0', 'D');
   return L.divIcon({
     className: '',
-    html: `<svg width="28" height="28" viewBox="0 0 28 28" xmlns="http://www.w3.org/2000/svg">
-      <polygon points="14,2 26,24 14,18 2,24" fill="${c}" stroke="#0a0e14" stroke-width="1.5"/>
-    </svg>`,
-    iconSize: [28, 28], iconAnchor: [14, 14],
+    html: `<div style="position:relative;width:32px;height:44px">
+      <div style="position:absolute;top:0;left:50%;transform:translateX(-50%);
+        background:#1e2030;color:${fill};font-size:9px;font-weight:bold;
+        padding:1px 5px;border-radius:3px;border:1px solid ${fill};
+        white-space:nowrap;font-family:monospace">${num}</div>
+      <svg width="32" height="28" viewBox="0 0 32 28" xmlns="http://www.w3.org/2000/svg"
+           style="position:absolute;bottom:0;left:0">
+        <polygon points="16,2 30,26 16,20 2,26"
+          fill="${fill}" stroke="#0a0e14" stroke-width="1.5"
+          opacity="${armed ? 1 : 0.55}"/>
+        ${armed ? `<circle cx="16" cy="14" r="2.5" fill="#0a0e14" opacity="0.6"/>` : ''}
+      </svg>
+    </div>`,
+    iconSize: [32, 44], iconAnchor: [16, 44],
   });
 }
 
-const markers = {};
-const states  = {};
-let gotoPin   = null;  // 지도 클릭 목표 핀
-
-// 지도 클릭 → 이동 목표 좌표 설정
 map.on('click', e => {
   const lat = e.latlng.lat.toFixed(6);
   const lon = e.latlng.lng.toFixed(6);
   document.getElementById('g-lat').value = lat;
   document.getElementById('g-lon').value = lon;
-
-  // 목표 핀 (빨간 X 마커)
   if (gotoPin) gotoPin.remove();
   gotoPin = L.marker([lat, lon], {
     icon: L.divIcon({
       className: '',
-      html: `<svg width="22" height="22" viewBox="0 0 22 22" xmlns="http://www.w3.org/2000/svg">
-        <line x1="3" y1="3" x2="19" y2="19" stroke="#ed8796" stroke-width="2.5" stroke-linecap="round"/>
-        <line x1="19" y1="3" x2="3" y2="19" stroke="#ed8796" stroke-width="2.5" stroke-linecap="round"/>
+      html: `<svg width="22" height="22" viewBox="0 0 22 22">
+        <circle cx="11" cy="11" r="9" fill="none" stroke="#ed8796" stroke-width="1.5"/>
+        <line x1="4" y1="4" x2="18" y2="18" stroke="#ed8796" stroke-width="2" stroke-linecap="round"/>
+        <line x1="18" y1="4" x2="4" y2="18" stroke="#ed8796" stroke-width="2" stroke-linecap="round"/>
       </svg>`,
       iconSize: [22, 22], iconAnchor: [11, 11],
     }),
-  }).addTo(map).bindPopup(`목표: ${lat}, ${lon}`).openPopup();
+  }).addTo(map).bindPopup(`🎯 목표: ${lat}, ${lon}`).openPopup();
 });
 
 function updateMarker(t) {
   if (!t.lat || !t.lon) return;
+  const airborne = (t.relative_alt ?? 0) >= 2;
+  const icon = makeIcon(t.drone_id, t.armed, airborne);
   if (!markers[t.drone_id]) {
-    markers[t.drone_id] = L.marker([t.lat, t.lon], { icon: makeIcon(t.armed) })
-      .addTo(map).bindPopup('');
+    markers[t.drone_id] = L.marker([t.lat, t.lon], { icon }).addTo(map).bindPopup('');
   }
   const m = markers[t.drone_id];
   m.setLatLng([t.lat, t.lon]);
-  m.setIcon(makeIcon(t.armed));
+  m.setIcon(icon);
   m.setPopupContent(
-    `<b style="color:#8aadf4">${t.drone_id}</b><br>` +
-    `모드: ${t.mode || '—'}  ` +
-    `${t.armed ? '<b style="color:#a6e3a1">ARMED</b>' : 'DISARMED'}<br>` +
-    `고도: ${t.alt?.toFixed(1)} m<br>` +
-    `속도: ${t.groundspeed?.toFixed(1)} m/s<br>` +
-    `배터리: ${t.battery_pct?.toFixed(0)} %<br>` +
-    `방향: ${t.heading}°`
+    `<b style="color:${DRONE_COLORS[t.drone_id]}">${t.drone_id}</b><br>` +
+    `<span style="color:#6e738d">모드</span> ${t.mode || '—'}&nbsp;&nbsp;` +
+    `${t.armed ? '<b style="color:#a6e3a1">ARMED</b>' : '<span style="color:#6e738d">DISARMED</span>'}<br>` +
+    `<span style="color:#6e738d">고도</span> ${t.alt?.toFixed(1)} m&nbsp;&nbsp;` +
+    `<span style="color:#6e738d">속도</span> ${t.groundspeed?.toFixed(1)} m/s<br>` +
+    `<span style="color:#6e738d">배터리</span> ${t.battery_pct?.toFixed(0)}%&nbsp;&nbsp;` +
+    `<span style="color:#6e738d">방위</span> ${t.heading}°<br>` +
+    `EKF ${t.ekf_ok ? '<b style="color:#a6e3a1">✓ 준비됨</b>' : '<b style="color:#ed8796">✗ 수렴 중</b>'}`
   );
 }
 
-// ── UI ──────────────────────────────────────────────────────────
-const sel   = document.getElementById('sel');
-const info  = document.getElementById('info');
-const log   = document.getElementById('cmd-log');
-const btns  = document.querySelectorAll('[data-cmd]');
+// ── 드론 카드 렌더링 ────────────────────────────────────────────────
+function renderDroneCards() {
+  const container = document.getElementById('drone-cards');
+  let connected = 0;
 
-function refreshInfo() {
-  const t = states[sel.value];
-  if (!t) { info.textContent = ''; info.className = 'info disconnected'; return; }
-  info.className = t.connected ? 'info' : 'info disconnected';
-  info.textContent =
-    `${t.connected ? '●' : '○'} ${t.mode || '?'}  ` +
-    `${t.armed ? 'ARMED' : 'DISARMED'}  ` +
-    `BAT ${t.battery_pct?.toFixed(0)}%  ` +
-    `ALT ${t.alt?.toFixed(0)}m`;
+  container.innerHTML = '';
+  DRONE_IDS.forEach(id => {
+    const t       = states[id];
+    const color   = DRONE_COLORS[id] || '#cdd6f4';
+    const num     = id.replace('drone-0', 'D');
+    const conn    = !!t?.connected;
+    const armed   = !!t?.armed;
+    const airborne = (t?.relative_alt ?? 0) >= 2;
+    if (conn) connected++;
+
+    const isSelected = selectedDrones.has(id);
+
+    let stateClass = '';
+    if (!conn)               stateClass = 'disconnected';
+    else if (armed && airborne) stateClass = 'armed-airborne';
+    else if (armed)          stateClass = 'armed-ground';
+
+    const armedBadge = armed
+      ? `<span class="card-armed armed-badge">ARMED</span>`
+      : `<span class="card-armed disarmed-badge">DISARMED</span>`;
+
+    const altPct = Math.min(100, ((t?.relative_alt ?? 0) / 100) * 100);
+
+    const card = document.createElement('div');
+    card.className = `drone-card ${stateClass}${isSelected ? ' selected' : ''}`;
+    card.dataset.id = id;
+
+    if (isSelected) {
+      card.style.setProperty('--sel-color', color);
+      card.style.boxShadow = `0 0 0 2px ${color}, 0 2px 16px ${color}44`;
+    }
+
+    // 속도: VFR_HUD groundspeed 우선, 없으면 vx/vy로 계산
+    const gs = t ? Math.max(
+      t.groundspeed ?? 0,
+      Math.sqrt(Math.pow(t.vx ?? 0, 2) + Math.pow(t.vy ?? 0, 2))
+    ) : null;
+    const gsStr = (conn && gs !== null) ? gs.toFixed(1) : '—';
+
+    // 체크 아이콘: 배경/테두리를 드론 색으로, 텍스트는 어둡게
+    const checkStyle = isSelected
+      ? `background:${color};border-color:${color};color:#0a0e14`
+      : `border-color:#3a3f55;background:transparent`;
+
+    card.innerHTML = `
+      <div class="card-top">
+        <span class="card-check" style="${checkStyle}">
+          ${isSelected ? '✓' : ''}
+        </span>
+        <span class="card-id" style="color:${color}">${num}</span>
+        <span class="card-mode" style="color:${conn ? color : '#6e738d'}">${conn ? modeLabel(t?.mode) : '연결 끊김'}</span>
+        ${armedBadge}
+      </div>
+      <div class="card-metrics">
+        <div class="metric">
+          <div class="metric-val">${t?.alt?.toFixed(0) ?? '—'}<span style="font-size:9px;color:#4a5080"> m</span></div>
+          <div class="metric-lbl">고도 ALT</div>
+        </div>
+        <div class="metric">
+          <div class="metric-val">${t?.battery_pct?.toFixed(0) ?? '—'}<span style="font-size:9px;color:#4a5080"> %</span></div>
+          <div class="metric-lbl">배터리 BAT</div>
+        </div>
+        <div class="metric">
+          <div class="metric-val">${gsStr}<span style="font-size:9px;color:#4a5080"> m/s</span></div>
+          <div class="metric-lbl">속도 SPD</div>
+        </div>
+        <div class="metric">
+          <div class="metric-val ${t?.ekf_ok ? 'ekf-ok' : 'ekf-bad'}">${conn ? (t?.ekf_ok ? '✓' : '✗') : '—'}</div>
+          <div class="metric-lbl">EKF</div>
+        </div>
+      </div>
+      <div class="card-progress" style="width:${altPct}%;background:${armed&&airborne?'#a6e3a1':armed?'#eed49f':'#4a5080'}"></div>
+    `;
+
+    container.appendChild(card);
+  });
+
+  const total = DRONE_IDS.length;
+  document.getElementById('conn-summary').textContent = `${connected}/${total} 연결됨`;
+  document.getElementById('conn-summary').style.color =
+    connected === total ? '#a6e3a1' : connected > 0 ? '#eed49f' : '#ed8796';
+}
+
+// ── 다중 선택 로직 ──────────────────────────────────────────────────
+function toggleDrone(id) {
+  if (selectedDrones.has(id)) {
+    selectedDrones.delete(id);
+  } else {
+    selectedDrones.add(id);
+  }
+  updateTargetBar();
+  renderDroneCards();
+  refreshBtns();
+}
+
+function selectAll() {
+  DRONE_IDS.filter(id => states[id]?.connected).forEach(id => selectedDrones.add(id));
+  updateTargetBar();
+  renderDroneCards();
+  refreshBtns();
+}
+
+function deselectAll() {
+  selectedDrones.clear();
+  updateTargetBar();
+  renderDroneCards();
+  refreshBtns();
+}
+
+function updateTargetBar() {
+  const sel     = [...selectedDrones];
+  const nameEl  = document.getElementById('target-name');
+  const btnAll  = document.getElementById('btn-all');
+  const connCnt = DRONE_IDS.filter(id => states[id]?.connected).length;
+
+  btnAll.classList.toggle('active', sel.length > 0 && sel.length === connCnt);
+
+  if (sel.length === 0) {
+    nameEl.textContent = '선택 없음';
+    nameEl.style.color = '#6e738d';
+  } else if (sel.length === 1) {
+    const id = sel[0];
+    nameEl.textContent = `${id.replace('drone-0', 'D')} 선택됨`;
+    nameEl.style.color = DRONE_COLORS[id] || '#8aadf4';
+  } else {
+    nameEl.textContent = sel.map(d => d.replace('drone-0', 'D')).join(' + ') + ' 선택됨';
+    nameEl.style.color = '#8aadf4';
+  }
+}
+
+// 카드 선택 — mousedown 사용 (click은 20Hz DOM 교체 때문에 유실됨)
+// mousedown은 JS 단일 스레드 특성상 20Hz 루프 개입 전에 즉시 처리됨
+document.getElementById('drone-cards').addEventListener('mousedown', e => {
+  if (e.button !== 0) return; // 좌클릭만
+  const card = e.target.closest('[data-id]');
+  if (card) toggleDrone(card.dataset.id);
+});
+
+document.getElementById('btn-all').addEventListener('click', selectAll);
+document.getElementById('btn-none').addEventListener('click', deselectAll);
+
+// ── 버튼 상태 ─────────────────────────────────────────────────────
+const btns    = document.querySelectorAll('[data-cmd]');
+const busyBar = document.getElementById('busy-bar');
+
+function setBusy(flag, msg = '명령 수행 중...') {
+  busy = flag;
+  busyBar.textContent = flag ? `⏳ ${msg}` : '';
+  busyBar.classList.toggle('on', flag);
+  refreshBtns();
 }
 
 function refreshBtns() {
-  const t = states[sel.value];
-  btns.forEach(b => b.disabled = !sel.value || !t?.connected);
+  if (busy || selectedDrones.size === 0) {
+    btns.forEach(b => b.disabled = true);
+    return;
+  }
+  const selList = [...selectedDrones];
+  const anyConn = selList.some(id => states[id]?.connected);
+  const anyEkf  = selList.some(id => states[id]?.connected && states[id]?.ekf_ok);
+
+  if (!anyConn) {
+    btns.forEach(b => b.disabled = true);
+    return;
+  }
+  btns.forEach(b => {
+    switch (b.dataset.cmd) {
+      case 'ARM':     b.disabled = !anyEkf;  break;
+      case 'DISARM':  b.disabled = false;     break;
+      case 'TAKEOFF': b.disabled = !anyEkf;  break;
+      case 'LAND':    b.disabled = false;     break;
+      case 'RTL':     b.disabled = false;     break;
+      case 'GOTO':    b.disabled = !anyEkf;  break;
+      default:        b.disabled = false;
+    }
+  });
 }
 
-sel.addEventListener('change', () => { refreshInfo(); refreshBtns(); });
+// ── 로그 ─────────────────────────────────────────────────────────
+const logEl = document.getElementById('cmd-log');
 
-// ── 명령 전송 ──────────────────────────────────────────────────
-async function sendCmd(cmd, params = {}) {
-  const drone_id = sel.value;
-  if (!drone_id) return;
-  addLog(`→ ${drone_id}  ${cmd}`, 'info');
+function droneIdFromText(text) {
+  const m = text.match(/drone-0\d/);
+  return m ? m[0] : null;
+}
+
+function addLog(msg, cls = 'info', droneId = null) {
+  const did = droneId || droneIdFromText(msg);
+  const ts  = new Date().toTimeString().slice(0, 8);
+  logStore.push({ ts, text: msg, level: cls, droneId: did });
+  if (logStore.length > 500) logStore.shift();
+  renderLog();
+}
+
+function renderLog() {
+  const entries = logStore.filter(e => {
+    if (filterLevel !== 'all' && e.level !== filterLevel) return false;
+    if (filterDrone !== 'all' && e.droneId !== filterDrone) return false;
+    return true;
+  }).slice(-150).reverse();
+
+  logEl.innerHTML = entries.map(e => {
+    const didLabel = e.droneId
+      ? `<span class="entry-did" style="color:${DRONE_COLORS[e.droneId] || '#6e738d'}">${e.droneId.replace('drone-0','D')}</span>`
+      : `<span class="entry-did" style="color:#4a5080">SYS</span>`;
+    return `<div class="entry ${e.level}">
+      <span class="entry-ts">${e.ts}</span>
+      ${didLabel}
+      <span class="entry-msg">${e.text}</span>
+    </div>`;
+  }).join('');
+}
+
+document.querySelectorAll('[data-lv]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('[data-lv]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    filterLevel = btn.dataset.lv;
+    renderLog();
+  });
+});
+
+function addDroneFilterBtn(id) {
+  const row = document.getElementById('drone-filter-row');
+  if (row.querySelector(`[data-did="${id}"]`)) return;
+  const num = id.replace('drone-0', 'D');
+  const btn = document.createElement('button');
+  btn.className = 'f-btn';
+  btn.dataset.did = id;
+  btn.textContent = num;
+  btn.style.color = DRONE_COLORS[id] || '#cdd6f4';
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('[data-did]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    filterDrone = id;
+    renderLog();
+  });
+  row.appendChild(btn);
+}
+
+document.querySelector('[data-did="all"]').addEventListener('click', () => {
+  document.querySelectorAll('[data-did]').forEach(b => b.classList.remove('active'));
+  document.querySelector('[data-did="all"]').classList.add('active');
+  filterDrone = 'all';
+  renderLog();
+});
+
+// ── 명령 전송 ─────────────────────────────────────────────────────
+const ACK_FAIL_REASON = {
+  'TAKEOFF:FAILED':               'GUIDED 모드 미설정 또는 EKF 미준비 (10~20초 대기 후 재시도)',
+  'TAKEOFF:TEMPORARILY_REJECTED': '이미 이륙 중이거나 직전 명령 처리 중',
+  'TAKEOFF:DENIED':               'GUIDED 모드 먼저 설정 필요',
+  'ARM:FAILED':                   'EKF 미준비 또는 GPS fix 부족 — 30초 대기',
+  'ARM:DENIED':                   'ARM 거부 — 모드 확인',
+  'ARM:TEMPORARILY_REJECTED':     '초기화 중 — 잠시 후 재시도',
+  'LAND:FAILED':                  '이미 착륙 중이거나 모드 불일치',
+  'RTL:FAILED':                   'GPS fix 부족 또는 홈 포인트 미설정',
+  'DISARM:FAILED':                '아직 공중 상태 또는 착지 미완료',
+  'DISARM:DENIED':                '착륙 완료 전 DISARM 거부',
+};
+
+async function sendCmd(cmd, params = {}, droneId) {
+  if (!droneId) return;
+  addLog(`→ ${cmd}`, 'info', droneId);
   try {
     const r = await fetch('/api/command', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ drone_id, cmd, params }),
+      body: JSON.stringify({ drone_id: droneId, cmd, params }),
     });
     const d = await r.json();
-    addLog(r.ok ? `  ↳ 전송됨` : `  ↳ 오류: ${d.error || r.statusText}`, r.ok ? 'ok' : 'fail');
+    if (!r.ok) addLog(`전송 오류: ${d.error || r.statusText}`, 'fail', droneId);
   } catch (e) {
-    addLog(`  ↳ 네트워크 오류: ${e.message}`, 'fail');
+    addLog(`네트워크 오류: ${e.message}`, 'fail', droneId);
   }
 }
 
-// GOTO: 드론이 지상에서 이륙한 후에만 전송 가능 — 이 한 곳만 실제 대기 필요
-function waitAirborne(id, timeoutMs = 15000) {
-  return new Promise(resolve => {
-    const deadline = Date.now() + timeoutMs;
-    (function check() {
-      if ((states[id]?.relative_alt ?? 0) >= 2) return resolve(true);
-      if (Date.now() >= deadline) return resolve(false);
-      setTimeout(check, 100);
-    })();
+function waitMode(id, mode, ms = 8000)  {
+  return new Promise(r => {
+    const dl = Date.now() + ms;
+    (function c(){ states[id]?.mode===mode ? r(true) : Date.now()>=dl ? r(false) : setTimeout(c, 100); })();
+  });
+}
+function waitArmed(id, ms = 10000) {
+  return new Promise(r => {
+    const dl = Date.now() + ms;
+    (function c(){ states[id]?.armed ? r(true) : Date.now()>=dl ? r(false) : setTimeout(c, 100); })();
+  });
+}
+function waitAirborne(id, ms = 20000) {
+  return new Promise(r => {
+    const dl = Date.now() + ms;
+    (function c(){ (states[id]?.relative_alt??0)>=2 ? r(true) : Date.now()>=dl ? r(false) : setTimeout(c, 100); })();
+  });
+}
+function waitLanded(id, ms = 60000) {
+  return new Promise(r => {
+    const dl = Date.now() + ms;
+    (function c(){ (states[id]?.relative_alt??99)<1 ? r(true) : Date.now()>=dl ? r(false) : setTimeout(c, 500); })();
+  });
+}
+function waitDisarmed(id, ms = 120000) {
+  return new Promise(r => {
+    const dl = Date.now() + ms;
+    (function c(){ !states[id]?.armed ? r(true) : Date.now()>=dl ? r(false) : setTimeout(c, 500); })();
+  });
+}
+function waitEkfReady(id, ms = 60000) {
+  if (states[id]?.ekf_ok) return Promise.resolve(true);
+  addLog(`EKF 수렴 대기 중... (최대 ${ms/1000}s)`, 'info', id);
+  return new Promise(r => {
+    const dl = Date.now() + ms;
+    (function c(){ states[id]?.ekf_ok ? r(true) : Date.now()>=dl ? r(false) : setTimeout(c, 500); })();
   });
 }
 
+async function armAndTakeoff(id, alt) {
+  if (!await waitEkfReady(id)) {
+    addLog('EKF 60s 내 미준비 — SITL 재시작 필요', 'fail', id);
+    return false;
+  }
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    if (attempt > 1) {
+      addLog(`TAKEOFF 재시도 (${attempt}/3)`, 'warn', id);
+      await sendCmd('DISARM', {}, id);
+      await new Promise(r => setTimeout(r, 2000));
+    }
+    await sendCmd('SET_MODE', { mode: 'GUIDED' }, id);
+    if (!await waitMode(id, 'GUIDED')) { addLog('GUIDED 전환 실패', 'fail', id); return false; }
+    await sendCmd('ARM', {}, id);
+    if (!await waitArmed(id, 15000)) {
+      if (attempt < 3) { addLog(`ARM 실패 (${attempt}/3) — 5s 대기`, 'warn', id); await new Promise(r => setTimeout(r, 5000)); continue; }
+      addLog('ARM 3회 실패', 'fail', id); return false;
+    }
+    addLog('ARM 완료 → 이륙', 'ok', id);
+    await sendCmd('TAKEOFF', { alt }, id);
+    if (await waitAirborne(id)) return true;
+    if (attempt < 3) addLog(`TAKEOFF 실패 (${attempt}/3)`, 'warn', id);
+  }
+  addLog('이륙 3회 실패', 'fail', id);
+  return false;
+}
+
+async function runForDrone(id, cmd, params = {}) {
+  const st = () => states[id] || {};
+  if (cmd === 'GOTO') {
+    const { lat, lon, alt = 30 } = params;
+    if ((st().relative_alt??0) < 2) {
+      if (st().armed) { await sendCmd('DISARM',{},id); await new Promise(r=>setTimeout(r,2000)); }
+      if (!await armAndTakeoff(id, alt)) return;
+    }
+    await sendCmd('GOTO', { lat, lon, alt }, id);
+  } else if (cmd === 'TAKEOFF') {
+    const { alt = 30 } = params;
+    if ((st().relative_alt??0) >= 2) { addLog('이미 공중 상태', 'info', id); return; }
+    if (st().armed) { await sendCmd('DISARM',{},id); await new Promise(r=>setTimeout(r,2000)); }
+    await armAndTakeoff(id, alt);
+  } else if (cmd === 'ARM') {
+    await sendCmd('SET_MODE', { mode: 'GUIDED' }, id);
+    if (!await waitMode(id, 'GUIDED')) { addLog('GUIDED 전환 실패', 'fail', id); return; }
+    await sendCmd('ARM', {}, id);
+  } else if (cmd === 'DISARM') {
+    if ((st().relative_alt??0) >= 2) {
+      addLog('공중 → 착륙 후 시동 끄기', 'info', id);
+      await sendCmd('LAND', {}, id);
+      if (!await waitLanded(id)) addLog('착륙 타임아웃 — DISARM 강제', 'warn', id);
+    }
+    await sendCmd('DISARM', {}, id);
+  } else if (cmd === 'LAND') {
+    if ((st().relative_alt??0) < 2) {
+      addLog('지상 상태 → 시동 끄기', 'info', id);
+      await sendCmd('DISARM', {}, id);
+    } else {
+      await sendCmd('LAND', {}, id);
+      if (!await waitLanded(id)) addLog('착륙 타임아웃 — DISARM 강제', 'warn', id);
+      else addLog('착지 완료 → 시동 끄기', 'info', id);
+      await sendCmd('DISARM', {}, id);
+    }
+  } else if (cmd === 'RTL') {
+    await sendCmd('RTL', {}, id);
+    addLog('귀환 중 — 착륙 완료까지 대기', 'info', id);
+    if (await waitDisarmed(id)) addLog('RTL 완료', 'ok', id);
+    else addLog('RTL 타임아웃 — 드론 직접 확인', 'warn', id);
+  }
+}
+
 btns.forEach(b => b.addEventListener('click', async () => {
-  const cmd = b.dataset.cmd;
-  const id  = sel.value;
-  const st  = () => states[id] || {};
+  if (busy || selectedDrones.size === 0) return;
+  const cmd     = b.dataset.cmd;
+  const targets = [...selectedDrones].filter(d => states[d]?.connected);
+  if (targets.length === 0) return;
+
+  const alt = parseFloat(document.getElementById('g-alt').value) || 30;
+  const label = targets.map(d => d.replace('drone-0','D')).join('+');
 
   if (cmd === 'GOTO') {
     const lat = parseFloat(document.getElementById('g-lat').value);
     const lon = parseFloat(document.getElementById('g-lon').value);
-    const alt = parseFloat(document.getElementById('g-alt').value) || 30;
-    if (isNaN(lat) || isNaN(lon)) { addLog('이동: 지도를 클릭하거나 좌표를 입력하세요', 'warn'); return; }
+    if (isNaN(lat)||isNaN(lon)) { addLog('이동: 지도 클릭 또는 좌표 입력 필요', 'warn'); return; }
     if (gotoPin) { gotoPin.remove(); gotoPin = null; }
-
-    if (!st().armed) {
-      // TCP 순서 보장 → 딜레이 없이 연속 전송, ArduCopter가 순서대로 처리
-      await sendCmd('SET_MODE', { mode: 'GUIDED' });
-      await sendCmd('ARM');
-      await sendCmd('TAKEOFF', { alt });
-      addLog(`이륙 중 — 공중 확인 후 이동 전송`, 'info');
-      if (!await waitAirborne(id)) { addLog('이륙 타임아웃', 'warn'); }
-    } else if ((st().relative_alt ?? 0) < 2) {
-      await sendCmd('TAKEOFF', { alt });
-      addLog(`이륙 중 — 공중 확인 후 이동 전송`, 'info');
-      if (!await waitAirborne(id)) { addLog('이륙 타임아웃', 'warn'); }
-    }
-
-    sendCmd('GOTO', { lat, lon, alt });
-
-  } else if (cmd === 'TAKEOFF') {
-    const alt = parseFloat(document.getElementById('g-alt').value) || 30;
-    if (!st().armed) {
-      await sendCmd('SET_MODE', { mode: 'GUIDED' });
-      await sendCmd('ARM');
-    }
-    sendCmd('TAKEOFF', { alt });
-
-  } else if (cmd === 'ARM') {
-    await sendCmd('SET_MODE', { mode: 'GUIDED' });
-    sendCmd('ARM');
+    setBusy(true, `${label} 이동 중...`);
+    await Promise.all(targets.map(d => runForDrone(d, 'GOTO', { lat, lon, alt })));
   } else {
-    sendCmd(cmd);
+    setBusy(true, `${label} ${cmd}...`);
+    await Promise.all(targets.map(d => runForDrone(d, cmd, { alt })));
   }
+  setBusy(false);
 }));
 
-// ── 로그 ────────────────────────────────────────────────────────
-function addLog(msg, cls = 'info') {
-  const ts = new Date().toTimeString().slice(0, 8);
-  const el = document.createElement('div');
-  el.className = `entry ${cls}`;
-  el.textContent = `[${ts}] ${msg}`;
-  log.prepend(el);
-  if (log.children.length > 200) log.lastChild.remove();
+// ── API: 드론 목록 로드 ────────────────────────────────────────────
+async function loadDrones() {
+  try {
+    const r    = await fetch('/api/drones');
+    const data = await r.json();
+    DRONE_IDS  = Object.keys(data).sort();
+    DRONE_IDS.forEach(id => addDroneFilterBtn(id));
+    renderDroneCards();
+    updateTargetBar();
+  } catch (e) {
+    console.warn('드론 목록 로드 실패:', e);
+  }
 }
 
-// ── WebSocket ────────────────────────────────────────────────────
+// ── WebSocket ─────────────────────────────────────────────────────
 const dot  = document.getElementById('dot');
 const wsEl = document.getElementById('ws-status');
 let ws, retry;
 
 function connect() {
-  ws = new WebSocket(`ws://${location.host}/ws/gcs`);
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(`${proto}//${location.host}/ws/gcs`);
 
   ws.onopen = () => {
     dot.classList.add('on');
@@ -287,10 +815,17 @@ function connect() {
     if (msg.type === 'telemetry') {
       states[msg.drone_id] = msg;
       updateMarker(msg);
-      if (sel.value === msg.drone_id) { refreshInfo(); refreshBtns(); }
+      renderDroneCards();
+      refreshBtns();
     } else if (msg.type === 'cmd_ack') {
       const ok = msg.result === 'ACCEPTED';
-      addLog(`ACK ${msg.drone_id}  ${msg.cmd}: ${msg.result}`, ok ? 'ok' : 'fail');
+      addLog(`ACK ${msg.cmd}: ${msg.result}`, ok ? 'ok' : 'fail', msg.drone_id);
+      if (!ok) {
+        const reason = ACK_FAIL_REASON[`${msg.cmd}:${msg.result}`];
+        if (reason) addLog(`  └ ${reason}`, 'warn', msg.drone_id);
+      }
+    } else if (msg.type === 'alert') {
+      addLog(`[${msg.level}] ${msg.reason}`, 'warn', msg.drone_id);
     }
   };
 
@@ -305,7 +840,7 @@ function connect() {
   ws.onerror = () => ws.close();
 }
 
-connect();
+loadDrones().then(connect);
 </script>
 </body>
 </html>
