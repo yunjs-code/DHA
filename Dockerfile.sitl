@@ -1,0 +1,39 @@
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive TZ=UTC
+
+# sudo + git만 먼저 설치, ardupilot 유저 생성
+RUN apt-get update && apt-get install -y sudo git && rm -rf /var/lib/apt/lists/* \
+ && useradd -m ardupilot \
+ && echo "ardupilot ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+
+USER ardupilot
+WORKDIR /home/ardupilot
+
+# ArduPilot 클론 (shallow)
+RUN git clone --depth 1 https://github.com/ArduPilot/ardupilot.git
+WORKDIR /home/ardupilot/ardupilot
+
+# SITL 빌드에 필요한 서브모듈만 초기화
+RUN git submodule update --init --recursive --depth 1
+
+# 빌드 의존성 설치 (ArduPilot 공식 스크립트)
+RUN Tools/environment_install/install-prereqs-ubuntu.sh -y
+
+# ArduCopter SITL 바이너리 빌드 (~30분)
+RUN bash -lc "./waf configure --board sitl && ./waf copter"
+
+# SITL 파라미터 파일 복사
+COPY --chown=ardupilot:ardupilot sitl_params.parm /home/ardupilot/sitl_params.parm
+
+# 시작 스크립트
+USER root
+COPY scripts/docker_sitl_start.sh /usr/local/bin/sitl_start.sh
+RUN chmod +x /usr/local/bin/sitl_start.sh
+
+EXPOSE 5760 5770 5780
+
+USER ardupilot
+WORKDIR /home/ardupilot
+
+CMD ["/bin/bash", "-l", "/usr/local/bin/sitl_start.sh"]

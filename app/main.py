@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import sys
 from contextlib import asynccontextmanager
 
@@ -134,7 +135,7 @@ async def lifespan(app: FastAPI):
     log.info("UAV Security Testbed 시작")
     log.info("드론 목록:")
     for drone_id, c in DRONES.items():
-        log.info("  %s → TCP 127.0.0.1:%d", drone_id, c.tcp_port)
+        log.info("  %s → TCP %s:%d", drone_id, os.environ.get("SITL_HOST", "127.0.0.1"), c.tcp_port)
     log.info("=" * 60)
     for connector in DRONES.values():
         connector.start()

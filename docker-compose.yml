@@ -1,0 +1,22 @@
+services:
+  sitl:
+    build:
+      context: .
+      dockerfile: Dockerfile.sitl
+    expose:
+      - "5760"
+      - "5770"
+      - "5780"
+    restart: unless-stopped
+
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      SITL_HOST: sitl
+    depends_on:
+      - sitl
+    restart: unless-stopped

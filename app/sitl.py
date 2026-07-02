@@ -8,6 +8,7 @@ from __future__ import annotations
 import collections
 import logging
 import math
+import os
 import struct
 import threading
 import time
@@ -18,6 +19,8 @@ from pymavlink import mavutil
 from app import mavlink as mav
 
 log = logging.getLogger(__name__)
+
+_SITL_HOST       = os.environ.get("SITL_HOST", "127.0.0.1")
 
 _RECV_TIMEOUT    = 1.0   # recv_match 블로킹 타임아웃 (초)
 _RECONNECT_DELAY = 5     # SITL 무응답 후 재시도 대기 (초)
@@ -70,7 +73,7 @@ class SITLConnector:
             daemon=True,
         )
         self._thread.start()
-        log.info("[%s] 수신 스레드 시작 → TCP 127.0.0.1:%d", self.drone_id, self.tcp_port)
+        log.info("[%s] 수신 스레드 시작 → TCP %s:%d", self.drone_id, _SITL_HOST, self.tcp_port)
 
     def stop(self) -> None:
         """수신 스레드를 정지하고 연결을 해제한다."""
@@ -199,10 +202,10 @@ class SITLConnector:
 
     def _recv_loop(self) -> None:
         while not self._stop.is_set():
-            log.info("[%s] ━━ TCP 접속 시도: 127.0.0.1:%d ━━", self.drone_id, self.tcp_port)
+            log.info("[%s] ━━ TCP 접속 시도: %s:%d ━━", self.drone_id, _SITL_HOST, self.tcp_port)
             try:
                 conn = mavutil.mavlink_connection(
-                    f"tcp:127.0.0.1:{self.tcp_port}",
+                    f"tcp:{_SITL_HOST}:{self.tcp_port}",
                     source_system=255,
                 )
                 log.info("[%s] TCP 소켓 연결됨 — HEARTBEAT 대기 중 (최대 %ds)...",
@@ -211,8 +214,8 @@ class SITLConnector:
                     self._conn = conn
                 self._run(conn)
             except ConnectionRefusedError:
-                log.warning("[%s] ✗ 연결 거부됨 — SITL이 실행 중인지 확인 필요 (TCP:%d). %ds 후 재시도",
-                            self.drone_id, self.tcp_port, _RECONNECT_DELAY)
+                log.warning("[%s] ✗ 연결 거부됨 — SITL이 실행 중인지 확인 필요 (TCP:%s:%d). %ds 후 재시도",
+                            self.drone_id, _SITL_HOST, self.tcp_port, _RECONNECT_DELAY)
                 with self._lock:
                     self._state["connected"] = False
                     self._conn = None
