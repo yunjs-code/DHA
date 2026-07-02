@@ -358,7 +358,7 @@ function updateMarker(t) {
     `<b style="color:${DRONE_COLORS[t.drone_id]}">${t.drone_id}</b><br>` +
     `<span style="color:#6e738d">모드</span> ${t.mode || '—'}&nbsp;&nbsp;` +
     `${t.armed ? '<b style="color:#a6e3a1">ARMED</b>' : '<span style="color:#6e738d">DISARMED</span>'}<br>` +
-    `<span style="color:#6e738d">고도</span> ${t.alt?.toFixed(1)} m&nbsp;&nbsp;` +
+    `<span style="color:#6e738d">고도</span> ${t.relative_alt?.toFixed(1)} m&nbsp;&nbsp;` +
     `<span style="color:#6e738d">속도</span> ${t.groundspeed?.toFixed(1)} m/s<br>` +
     `<span style="color:#6e738d">배터리</span> ${t.battery_pct?.toFixed(0)}%&nbsp;&nbsp;` +
     `<span style="color:#6e738d">방위</span> ${t.heading}°<br>` +
@@ -426,8 +426,8 @@ function renderDroneCards() {
       </div>
       <div class="card-metrics">
         <div class="metric">
-          <div class="metric-val">${t?.alt?.toFixed(0) ?? '—'}<span style="font-size:9px;color:#4a5080"> m</span></div>
-          <div class="metric-lbl">고도 ALT</div>
+          <div class="metric-val">${t?.relative_alt?.toFixed(0) ?? '—'}<span style="font-size:9px;color:#4a5080"> m</span></div>
+          <div class="metric-lbl">고도 REL</div>
         </div>
         <div class="metric">
           <div class="metric-val">${t?.battery_pct?.toFixed(0) ?? '—'}<span style="font-size:9px;color:#4a5080"> %</span></div>
@@ -516,10 +516,13 @@ document.getElementById('btn-none').addEventListener('click', deselectAll);
 const btns    = document.querySelectorAll('[data-cmd]');
 const busyBar = document.getElementById('busy-bar');
 
+let busyTimer = null;
 function setBusy(flag, msg = '명령 수행 중...') {
   busy = flag;
-  busyBar.textContent = flag ? `⏳ ${msg}` : '';
+  busyBar.textContent = flag ? `⏳ ${msg} <span style="cursor:pointer;color:#ed8796" onclick="setBusy(false)">  [X 강제해제]</span>` : '';
   busyBar.classList.toggle('on', flag);
+  clearTimeout(busyTimer);
+  if (flag) busyTimer = setTimeout(() => setBusy(false), 90000); // 90s 자동 해제
   refreshBtns();
 }
 

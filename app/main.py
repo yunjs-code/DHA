@@ -21,9 +21,9 @@ log = logging.getLogger(__name__)
 
 # ── SITL 커넥터 (서버 시작 시 TCP 접속) ──────────────────────────────────────
 DRONES: dict[str, SITLConnector] = {
-    "drone-01": SITLConnector("drone-01", 5760),
-    "drone-02": SITLConnector("drone-02", 5770),
-    "drone-03": SITLConnector("drone-03", 5780),
+    "drone-01": SITLConnector("drone-01", 15760),
+    "drone-02": SITLConnector("drone-02", 15770),
+    "drone-03": SITLConnector("drone-03", 15780),
 }
 
 # ── WebSocket 연결 관리 ────────────────────────────────────────────────────────
