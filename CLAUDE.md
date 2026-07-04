@@ -12,15 +12,6 @@
 - pymavlink recv → 파싱 → WebSocket JSON 순서만 허용
 - SITL로 보내는 명령: 반드시 COMMAND_LONG 바이너리로 인코딩
 
-### R2. 금지 기능 목록 — 추가하지 않는다
-- AI/ML 탐지 (IsolationForest, RuleEngine 등)
-- 공격 주입 시뮬레이터 (AttackManager, injector)
-- MQTT 브로커 연동
-- SATCOM/위성 채널 에뮬레이션
-- RTSP 영상 스트림
-- 시나리오 엔진
-- 시뮬레이션 전용 내부 필드 (`_ground_truth`, `malformed`)
-
 ### R3. 브라우저 ↔ 서버는 WebSocket JSON만 허용
 - GCS: 드론 위치·상태를 JSON으로 수신, 명령을 JSON으로 송신
 - Attacker: MAVLink 패킷을 hex + 파싱 결과 JSON으로 수신

