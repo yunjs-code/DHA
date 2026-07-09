@@ -2,3 +2,4 @@ fastapi>=0.111.0
 uvicorn[standard]>=0.29.0
 pymavlink>=2.4.41
 aiofiles>=23.0.0
+openai>=1.0.0  # Blue Agent AI Threat Analyzer 기본 구현체 (추후 Claude provider 자리)

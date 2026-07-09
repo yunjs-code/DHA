@@ -7,3 +7,14 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+
+# ArduCopter SITL 런타임 잔여물
+eeprom.bin
+mav.parm
+sitl_params.parm
+terrain/
+sitl_params/
+
+# 서명 키 (민감 정보)
+signing.key
+*.key

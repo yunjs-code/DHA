@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./logs/**)",
+      "Read(./terrain/**)",
+      "Read(./mav.parm)",
+      "Read(./eeprom.bin)",
+      "Read(./sitl_params.parm)",
+      "Read(**/*.BIN)",
+      "Read(**/*.bin)",
+      "Read(**/*.DAT)",
+      "Read(**/*.tlog)",
+      "Glob(./logs/**)",
+      "Glob(./terrain/**)"
+    ]
+  }
+}

@@ -9,13 +9,21 @@
 1. [개요](#개요)
 2. [시스템 아키텍처](#시스템-아키텍처)
 3. [파일 구조](#파일-구조)
-4. [실행 방법](#실행-방법)
+4. [AI 에이전트 설계 및 구현](#ai-에이전트-설계-및-구현)
+   - [4.1 아키텍처 개요 및 다이어그램](#41-아키텍처-개요-및-다이어그램)
+   - [4.2 공격형 Red 에이전트](#42-공격형-red-에이전트)
+   - [4.3 방어형 Blue 에이전트](#43-방어형-blue-에이전트)
+   - [4.4 에이전트 간 협력 구조 및 기술 스택](#44-에이전트-간-협력-구조-및-기술-스택)
+   - [4.5 MITRE ATT&CK / D3FEND 매핑](#45-mitre-attck--d3fend-매핑)
+   - [4.6 시뮬레이션 테스트베드](#46-시뮬레이션-테스트베드)
+   - [4.7 부가자료(GitHub/ZIP) 구성 계획](#47-부가자료github-zip-구성-계획)
+5. [실행 방법](#실행-방법)
    - [방법 A — Docker (권장)](#방법-a--docker-권장)
    - [방법 B — Linux VM (VirtualBox)](#방법-b--linux-vm-virtualbox)
-5. [코드 수정 방법](#코드-수정-방법)
-6. [실험 방법](#실험-방법)
-7. [WebSocket / REST API 스키마](#websocket--rest-api-스키마)
-8. [포트 정보](#포트-정보)
+6. [코드 수정 방법](#코드-수정-방법)
+7. [실험 방법](#실험-방법)
+8. [WebSocket / REST API 스키마](#websocket--rest-api-스키마)
+9. [포트 정보](#포트-정보)
 
 ---
 
@@ -159,7 +167,7 @@ pip install -r /media/sf_uav/requirements.txt
 ```bash
 source ~/venv-ardupilot/bin/activate
 cd /media/sf_uav
-bash scripts/restart.sh
+bash scripts/start_sitl.sh
 ```
 
 `restart.sh`가 자동으로:

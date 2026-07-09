@@ -1,14 +1,18 @@
 """SITL 커넥터 — pymavlink TCP 직접 연결, 원본 바이너리 보존.
 
-서버가 SITL ArduCopter TCP 포트에 직접 접속 (MAVProxy 불필요).
-드론별 TCP 포트: 5760(drone-01), 5761(drone-02), 5762(drone-03)
+서버는 ArduCopter에 직접 접속하지 않고, scripts/mavlink_tcp_relay.py가 열어주는
+SERVER_PORT에 접속한다 (릴레이가 ArduCopter TCP 포트 하나를 서버용/공격용으로 분기).
+드론별 SERVER_PORT: 15760(drone-01), 15770(drone-02), 15780(drone-03)
 """
 from __future__ import annotations
 
 import collections
+import contextlib
+import io
 import logging
 import math
 import os
+import socket
 import struct
 import threading
 import time
@@ -25,8 +29,8 @@ _SITL_HOST       = os.environ.get("SITL_HOST", "127.0.0.1")
 _RECV_TIMEOUT    = 1.0   # recv_match 블로킹 타임아웃 (초)
 _RECONNECT_DELAY = 5     # SITL 무응답 후 재시도 대기 (초)
 _QUEUE_MAXLEN    = 100   # 원본 바이너리 큐 최대 크기
-_SITL_TIMEOUT    = 30    # 이 시간 동안 패킷 없으면 재연결 간주 (초)
-_HB_TIMEOUT      = 30    # wait_heartbeat 타임아웃 (초)
+_SITL_TIMEOUT    = 60    # 이 시간 동안 패킷 없으면 재연결 간주 (초)
+_HB_TIMEOUT      = 90    # wait_heartbeat 타임아웃 (초) — SITL 시작에 최대 90초 소요
 
 _CMD_NAMES = {
     400: "ARM/DISARM", 22: "TAKEOFF", 21: "LAND",
@@ -60,6 +64,11 @@ class SITLConnector:
             "connected": False,
         }
         self._last_armed: Optional[bool] = None  # armed 상태 변화 추적
+
+        # 디버그 추적 (락 없이 읽어도 됨 — Python 단순 타입은 원자적)
+        self._last_error: str = ""
+        self._connect_attempts: int = 0
+        self._last_recv_time: float = 0.0
 
     # ── 공개 인터페이스 ────────────────────────────────────────────────────────
 
@@ -111,11 +120,11 @@ class SITLConnector:
         with self._lock:
             return dict(self._state)
 
-    def send_command(self, raw: bytes) -> None:
-        """COMMAND_LONG을 SITL에 전송 — 항상 command_long_send 사용."""
+    def send_command(self, raw: bytes) -> bool:
+        """COMMAND_LONG을 SITL에 전송 — 항상 command_long_send 사용. 성공 여부를 반환."""
         if self._conn is None:
             log.warning("[%s] send_command: 연결 없음 — 명령 무시됨!", self.drone_id)
-            return
+            return False
         try:
             if len(raw) >= 10 and raw[0] == 0xFD:
                 msg_id  = raw[7] | (raw[8] << 8) | (raw[9] << 16)
@@ -136,21 +145,23 @@ class SITLConnector:
                         tgt_sys, 0, cmd_id, 0,
                         p1, p2, p3, p4, p5, p6, p7,
                     )
-                    return
+                    return True
             log.warning("[%s] 알 수 없는 패킷 형식 (len=%d, stx=0x%02x) — 전송 건너뜀",
                         self.drone_id, len(raw), raw[0] if raw else 0)
+            return False
         except Exception as exc:
             log.error("[%s] send_command 실패: %s", self.drone_id, exc)
+            return False
 
-    def send_goto(self, lat: float, lon: float, alt: float) -> None:
-        """SET_POSITION_TARGET_GLOBAL_INT으로 GOTO 전송 (GUIDED 모드 전용).
+    def send_goto(self, lat: float, lon: float, alt: float) -> bool:
+        """SET_POSITION_TARGET_GLOBAL_INT으로 GOTO 전송 (GUIDED 모드 전용). 성공 여부를 반환.
 
         MAV_CMD_DO_REPOSITION(192)는 일부 ArduCopter 버전에서 UNSUPPORTED 반환.
         QGC와 동일한 방식으로 position target을 직접 설정한다.
         """
         if self._conn is None:
             log.warning("[%s] send_goto: 연결 없음!", self.drone_id)
-            return
+            return False
         try:
             type_mask = (
                 mavutil.mavlink.POSITION_TARGET_TYPEMASK_VX_IGNORE |
@@ -177,13 +188,15 @@ class SITLConnector:
             )
             log.info("[%s] ▶ GOTO (SET_POSITION_TARGET_GLOBAL_INT) lat=%.6f lon=%.6f alt=%.1fm",
                      self.drone_id, lat, lon, alt)
+            return True
         except Exception as exc:
             log.error("[%s] send_goto 실패: %s", self.drone_id, exc)
+            return False
 
-    def send_set_mode(self, mode_id: int) -> None:
+    def send_set_mode(self, mode_id: int) -> bool:
         if self._conn is None:
             log.warning("[%s] send_set_mode: 연결 없음!", self.drone_id)
-            return
+            return False
         try:
             log.info("[%s] ▶ SET_MODE 전송: custom_mode=%d (target_system=%d)",
                      self.drone_id, mode_id, self._conn.target_system)
@@ -192,40 +205,102 @@ class SITLConnector:
                 1,       # MAV_MODE_FLAG_CUSTOM_MODE_ENABLED
                 mode_id,
             )
+            return True
         except Exception as exc:
             log.error("[%s] send_set_mode 실패: %s", self.drone_id, exc)
+            return False
 
     def is_ready(self) -> bool:
         return self._ready.is_set()
 
+    def get_debug_info(self) -> dict:
+        """디버그 엔드포인트용 상세 연결 정보를 반환한다."""
+        with self._lock:
+            s = dict(self._state)
+        elapsed = round(time.time() - self._last_recv_time, 1) if self._last_recv_time else None
+
+        # 포트 오픈 여부 빠른 확인 (1초 타임아웃)
+        tcp_open = False
+        try:
+            _s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            _s.settimeout(1.0)
+            _s.connect((_SITL_HOST, self.tcp_port))
+            _s.close()
+            tcp_open = True
+        except Exception:
+            pass
+
+        return {
+            "host":               _SITL_HOST,
+            "port":               self.tcp_port,
+            "tcp_open":           tcp_open,
+            "connected":          s.get("connected", False),
+            "ready":              self._ready.is_set(),
+            "connect_attempts":   self._connect_attempts,
+            "last_error":         self._last_error,
+            "last_recv_secs_ago": elapsed,
+            "thread_alive":       self._thread.is_alive() if self._thread else False,
+            "sysid":              s.get("sysid"),
+            "armed":              s.get("armed"),
+            "mode":               s.get("mode"),
+            "ekf_ok":             s.get("ekf_ok"),
+        }
+
     # ── 내부 수신 루프 ─────────────────────────────────────────────────────────
 
     def _recv_loop(self) -> None:
+        retry_count = 0
+        last_warn_t = 0.0
+
         while not self._stop.is_set():
-            log.info("[%s] ━━ TCP 접속 시도: %s:%d ━━", self.drone_id, _SITL_HOST, self.tcp_port)
+            retry_count += 1
+            self._connect_attempts += 1
+            now = time.time()
+
+            if retry_count == 1:
+                log.info("[%s] ━━ TCP 접속 시도: %s:%d ━━", self.drone_id, _SITL_HOST, self.tcp_port)
+            else:
+                log.info("[%s] TCP 재접속 #%d: %s:%d (오류: %s)",
+                         self.drone_id, retry_count, _SITL_HOST, self.tcp_port, self._last_error)
+
             try:
-                conn = mavutil.mavlink_connection(
-                    f"tcp:{_SITL_HOST}:{self.tcp_port}",
-                    source_system=255,
-                )
+                # pymavlink 내부 "sleeping" stdout 출력 억제
+                _sink = io.StringIO()
+                with contextlib.redirect_stdout(_sink), contextlib.redirect_stderr(_sink):
+                    conn = mavutil.mavlink_connection(
+                        f"tcp:{_SITL_HOST}:{self.tcp_port}",
+                        source_system=255,
+                    )
                 log.info("[%s] TCP 소켓 연결됨 — HEARTBEAT 대기 중 (최대 %ds)...",
                          self.drone_id, _HB_TIMEOUT)
+                retry_count = 0
+                last_warn_t = 0.0
                 with self._lock:
                     self._conn = conn
                 self._run(conn)
             except ConnectionRefusedError:
-                log.warning("[%s] ✗ 연결 거부됨 — SITL이 실행 중인지 확인 필요 (TCP:%s:%d). %ds 후 재시도",
-                            self.drone_id, _SITL_HOST, self.tcp_port, _RECONNECT_DELAY)
+                self._last_error = f"ConnectionRefused — SITL 미실행 또는 포트 불일치 (TCP:{_SITL_HOST}:{self.tcp_port})"
+                self._ready.clear()
                 with self._lock:
                     self._state["connected"] = False
                     self._conn = None
+                # 30초마다 한 번만 경고 (SITL 대기 중 로그 폭탄 방지)
+                if now - last_warn_t >= 30:
+                    log.warning("[%s] SITL 포트 미응답 — 대기 중 (TCP:%s:%d, 시도 #%d)",
+                                self.drone_id, _SITL_HOST, self.tcp_port, retry_count)
+                    log.warning("[%s] 확인: ss -tlnp | grep %d  또는  GET /api/debug",
+                                self.drone_id, self.tcp_port)
+                    last_warn_t = now
                 time.sleep(_RECONNECT_DELAY)
             except Exception as exc:
-                log.warning("[%s] ✗ 연결 실패 (%s). %ds 후 재시도",
-                            self.drone_id, exc, _RECONNECT_DELAY)
+                self._last_error = str(exc)
+                self._ready.clear()
                 with self._lock:
                     self._state["connected"] = False
                     self._conn = None
+                if now - last_warn_t >= 30:
+                    log.warning("[%s] ✗ 연결 오류: %s — 재시도 중...", self.drone_id, exc)
+                    last_warn_t = now
                 time.sleep(_RECONNECT_DELAY)
 
     def _run(self, conn: mavutil.mavfile) -> None:
@@ -266,6 +341,7 @@ class SITLConnector:
                  self.drone_id, self.tcp_port, sysid)
 
         last_recv = time.time()
+        self._last_recv_time = last_recv
         msg_counts: dict[int, int] = {}
 
         while not self._stop.is_set():
@@ -284,6 +360,7 @@ class SITLConnector:
                 continue
 
             last_recv = time.time()
+            self._last_recv_time = last_recv
             raw = bytes(msg.get_msgbuf())
             if not raw:
                 continue

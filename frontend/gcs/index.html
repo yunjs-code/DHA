@@ -11,33 +11,32 @@ body { font-family: 'Courier New', monospace; background: #0a0e14; color: #cdd6f
 
 /* ── 헤더 ── */
 header {
-  background: #1e2030; padding: 6px 16px;
+  background: #1e2030; padding: 14px 24px;
   border-bottom: 2px solid #8aadf4;
-  display: flex; align-items: center; gap: 12px; flex-shrink: 0;
+  display: flex; align-items: center; gap: 20px; flex-shrink: 0;
 }
-header h1 { font-size: 13px; color: #8aadf4; letter-spacing: 2px; }
-.dot { width: 8px; height: 8px; border-radius: 50%; background: #ed8796; flex-shrink: 0; transition: background 0.3s; }
+header h1 { font-size: 24px; color: #8aadf4; letter-spacing: 2px; }
+.dot { width: 14px; height: 14px; border-radius: 50%; background: #ed8796; flex-shrink: 0; transition: background 0.3s; }
 .dot.on { background: #a6e3a1; }
-#ws-status { font-size: 11px; color: #6e738d; }
-.header-right { margin-left: auto; font-size: 11px; color: #6e738d; }
-
+#ws-status { font-size: 17px; color: #6e738d; }
+.header-right { margin-left: auto; font-size: 17px; color: #6e738d; }
 /* ── 레이아웃 ── */
 .main { display: flex; flex: 1; overflow: hidden; }
 #map { flex: 1; z-index: 0; }
-.panel { width: 420px; background: #161922; display: flex; flex-direction: column; border-left: 1px solid #2a2f45; overflow: hidden; flex-shrink: 0; }
+.panel { width: 460px; background: #161922; display: flex; flex-direction: column; border-left: 1px solid #2a2f45; overflow-y: auto; overflow-x: hidden; flex-shrink: 0; }
 
 /* ── 섹션 공통 ── */
-.sec { padding: 10px 12px; border-bottom: 1px solid #2a2f45; flex-shrink: 0; }
+.sec { padding: 14px 16px; border-bottom: 1px solid #2a2f45; flex-shrink: 0; }
 .sec-title {
-  font-size: 9px; color: #4a5080; letter-spacing: 2px;
-  text-transform: uppercase; margin-bottom: 8px;
+  font-size: 15px; color: #4a5080; letter-spacing: 2px;
+  text-transform: uppercase; margin-bottom: 10px;
   display: flex; align-items: center; justify-content: space-between;
 }
 
 /* ── 드론 카드 ── */
 .drone-card {
   background: #1e2030; border: 2px solid #2a2f45; border-radius: 6px;
-  padding: 10px 12px; margin-bottom: 7px; cursor: pointer;
+  padding: 14px 16px; margin-bottom: 10px; cursor: pointer;
   transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
   position: relative; overflow: hidden;
   user-select: none;
@@ -55,53 +54,53 @@ header h1 { font-size: 13px; color: #8aadf4; letter-spacing: 2px; }
 }
 .drone-card.selected:hover { background: #1e2a52; }
 
-.card-top { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; }
-.card-id { font-size: 15px; font-weight: bold; letter-spacing: 1px; min-width: 30px; }
+.card-top { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.card-id { font-size: 24px; font-weight: bold; letter-spacing: 1px; min-width: 60px; }
 .card-mode {
-  font-size: 11px; padding: 2px 8px; border-radius: 10px;
+  font-size: 16px; padding: 4px 14px; border-radius: 10px;
   border: 1px solid currentColor; letter-spacing: 0.5px;
 }
-.card-armed { font-size: 10px; padding: 2px 7px; border-radius: 10px; margin-left: auto; }
+.card-armed { font-size: 15px; padding: 4px 12px; border-radius: 10px; margin-left: auto; }
 .armed-badge    { background: rgba(166,227,161,0.15); color: #a6e3a1; border: 1px solid #a6e3a1; }
 .disarmed-badge { background: rgba(110,115,141,0.15); color: #6e738d; border: 1px solid #4a5080; }
 
 /* 선택 체크 아이콘 */
 .card-check {
-  width: 20px; height: 20px; border-radius: 4px; border: 2px solid #3a3f55;
+  width: 28px; height: 28px; border-radius: 4px; border: 2px solid #3a3f55;
   flex-shrink: 0; display: flex; align-items: center; justify-content: center;
-  font-size: 13px; font-weight: bold; transition: all 0.15s; color: #0a0e14;
+  font-size: 18px; font-weight: bold; transition: all 0.15s; color: #0a0e14;
 }
 
-.card-metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.card-metrics { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
 .metric { text-align: center; }
-.metric-val { font-size: 13px; color: #cdd6f4; }
-.metric-lbl { font-size: 9px; color: #4a5080; margin-top: 1px; }
+.metric-val { font-size: 22px; color: #cdd6f4; }
+.metric-lbl { font-size: 14px; color: #4a5080; margin-top: 2px; }
 .ekf-ok  { color: #a6e3a1; }
 .ekf-bad { color: #ed8796; }
 
 .card-progress {
-  position: absolute; bottom: 0; left: 0; height: 2px;
+  position: absolute; bottom: 0; left: 0; height: 3px;
   background: #a6e3a1; transition: width 0.5s; opacity: 0.6;
 }
 
 /* ── 대상 선택 바 ── */
 .target-bar {
-  display: flex; align-items: center; gap: 8px;
-  padding: 8px 12px; border-bottom: 1px solid #2a2f45;
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 16px; border-bottom: 1px solid #2a2f45;
   flex-shrink: 0; flex-wrap: wrap;
 }
-.target-label { font-size: 11px; color: #6e738d; }
-.target-name  { font-size: 12px; color: #8aadf4; font-weight: bold; flex: 1; }
-.target-btns  { display: flex; gap: 5px; }
+.target-label { font-size: 16px; color: #6e738d; }
+.target-name  { font-size: 20px; color: #8aadf4; font-weight: bold; flex: 1; }
+.target-btns  { display: flex; gap: 8px; }
 .btn-sel {
-  font-size: 10px; padding: 3px 9px;
+  font-size: 15px; padding: 6px 16px;
   background: #2a2f45; color: #8aadf4; border: 1px solid #3a4060;
   border-radius: 3px; cursor: pointer; letter-spacing: 0.5px;
 }
 .btn-sel:hover { background: #3a4060; }
 .btn-sel.active { background: #1a2040; border-color: #8aadf4; }
 .btn-desel {
-  font-size: 10px; padding: 3px 9px;
+  font-size: 15px; padding: 6px 16px;
   background: #2a2f45; color: #6e738d; border: 1px solid #3a4060;
   border-radius: 3px; cursor: pointer;
 }
@@ -109,26 +108,26 @@ header h1 { font-size: 13px; color: #8aadf4; letter-spacing: 2px; }
 
 /* ── busy bar ── */
 #busy-bar {
-  display: none; font-size: 11px; color: #eed49f; background: #1e1a0a;
-  padding: 5px 12px; border-bottom: 1px solid #3a3010;
+  display: none; font-size: 16px; color: #eed49f; background: #1e1a0a;
+  padding: 8px 16px; border-bottom: 1px solid #3a3010;
   flex-shrink: 0;
 }
 #busy-bar.on { display: block; }
 
 /* ── 명령 버튼 ── */
-.cmd-sec { padding: 12px 12px; border-bottom: 1px solid #2a2f45; flex-shrink: 0; }
-.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
-.grid1 { display: grid; grid-template-columns: 1fr; gap: 7px; margin-top: 7px; }
+.cmd-sec { padding: 16px 16px; border-bottom: 1px solid #2a2f45; flex-shrink: 0; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.grid1 { display: grid; grid-template-columns: 1fr; gap: 10px; margin-top: 10px; }
 
 button {
   background: #1e2030; color: #cdd6f4; border: 1px solid #3a3f55;
-  padding: 13px 12px; font-family: inherit; font-size: 14px; cursor: pointer;
+  padding: 12px 12px; font-family: inherit; font-size: 20px; cursor: pointer;
   border-radius: 5px; transition: all 0.12s; text-align: center; line-height: 1.3;
 }
 button:hover:not(:disabled) { filter: brightness(1.25); background: #252a40; }
 button:disabled { opacity: 0.25; cursor: not-allowed; }
 
-.en { font-size: 10px; color: inherit; opacity: 0.65; display: block; letter-spacing: 1px; margin-top: 2px; }
+.en { font-size: 13px; color: inherit; opacity: 0.65; display: block; letter-spacing: 1px; margin-top: 4px; }
 
 .arm     { border-color: #a6e3a1; color: #a6e3a1; }
 .disarm  { border-color: #ed8796; color: #ed8796; }
@@ -137,24 +136,24 @@ button:disabled { opacity: 0.25; cursor: not-allowed; }
 .rtl     { border-color: #f5a97f; color: #f5a97f; }
 .goto    { border-color: #c6a0f6; color: #c6a0f6; }
 
-.goto-row { display: grid; grid-template-columns: 1fr 1fr 0.8fr; gap: 6px; margin-top: 9px; }
-.goto-row label { font-size: 9px; color: #6e738d; display: block; margin-bottom: 3px; letter-spacing: 0.5px; }
+.goto-row { display: grid; grid-template-columns: 1fr 1fr 0.8fr; gap: 8px; margin-top: 12px; }
+.goto-row label { font-size: 14px; color: #6e738d; display: block; margin-bottom: 4px; letter-spacing: 0.5px; }
 input[type=number] {
   background: #12151e; color: #cdd6f4; border: 1px solid #3a3f55;
-  padding: 7px 8px; width: 100%; font-family: inherit; font-size: 11px; border-radius: 3px;
+  padding: 8px 10px; width: 100%; font-family: inherit; font-size: 16px; border-radius: 3px;
 }
 input:focus { outline: none; border-color: #8aadf4; }
 
 /* ── 로그 ── */
-.log-sec { display: flex; flex-direction: column; flex: 1; overflow: hidden; min-height: 0; }
+.log-sec { display: flex; flex-direction: column; flex: none; min-height: 0; }
 .log-filters {
-  padding: 7px 10px; border-bottom: 1px solid #2a2f45;
-  display: flex; flex-direction: column; gap: 5px; flex-shrink: 0;
+  padding: 10px 12px; border-bottom: 1px solid #2a2f45;
+  display: flex; flex-direction: column; gap: 8px; flex-shrink: 0;
 }
-.filter-row { display: flex; gap: 4px; align-items: center; }
-.filter-lbl { font-size: 9px; color: #4a5080; letter-spacing: 1px; min-width: 24px; }
+.filter-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.filter-lbl { font-size: 14px; color: #4a5080; letter-spacing: 1px; min-width: 40px; }
 .f-btn {
-  font-size: 9px; padding: 2px 7px; border-radius: 10px;
+  font-size: 14px; padding: 5px 14px; border-radius: 10px;
   background: #1e2030; color: #6e738d; border: 1px solid #3a3f55;
   cursor: pointer; letter-spacing: 0.5px; transition: all 0.1s;
 }
@@ -164,13 +163,13 @@ input:focus { outline: none; border-color: #8aadf4; }
 .f-btn.f-warn.active { background: #2a2010; color: #eed49f; border-color: #eed49f; }
 .f-btn.f-fail.active { background: #2a1020; color: #ed8796; border-color: #ed8796; }
 
-#cmd-log { flex: 1; overflow-y: auto; padding: 4px 0; }
+#cmd-log { flex: none; max-height: 260px; overflow-y: auto; padding: 4px 0; }
 .entry {
-  padding: 3px 12px; font-size: 10px; line-height: 1.7;
-  border-bottom: 1px solid #12151e; display: flex; gap: 6px;
+  padding: 5px 16px; font-size: 15px; line-height: 1.6;
+  border-bottom: 1px solid #12151e; display: flex; gap: 10px; flex-wrap: wrap;
 }
 .entry-ts   { color: #4a5080; flex-shrink: 0; }
-.entry-did  { min-width: 52px; flex-shrink: 0; font-weight: bold; }
+.entry-did  { min-width: 70px; flex-shrink: 0; font-weight: bold; }
 .entry-msg  { flex: 1; word-break: break-all; }
 .entry.ok   .entry-msg { color: #a6e3a1; }
 .entry.fail .entry-msg { color: #ed8796; }
@@ -189,6 +188,7 @@ input:focus { outline: none; border-color: #8aadf4; }
 
 <div class="main">
   <div id="map"></div>
+
   <div class="panel">
 
     <!-- 드론 현황 카드 -->
@@ -308,12 +308,12 @@ function makeIcon(droneId, armed, airborne) {
   const num  = droneId.replace('drone-0', 'D');
   return L.divIcon({
     className: '',
-    html: `<div style="position:relative;width:32px;height:44px">
+    html: `<div style="position:relative;width:44px;height:60px">
       <div style="position:absolute;top:0;left:50%;transform:translateX(-50%);
-        background:#1e2030;color:${fill};font-size:9px;font-weight:bold;
-        padding:1px 5px;border-radius:3px;border:1px solid ${fill};
+        background:#1e2030;color:${fill};font-size:15px;font-weight:bold;
+        padding:2px 7px;border-radius:4px;border:1px solid ${fill};
         white-space:nowrap;font-family:monospace">${num}</div>
-      <svg width="32" height="28" viewBox="0 0 32 28" xmlns="http://www.w3.org/2000/svg"
+      <svg width="44" height="38" viewBox="0 0 32 28" xmlns="http://www.w3.org/2000/svg"
            style="position:absolute;bottom:0;left:0">
         <polygon points="16,2 30,26 16,20 2,26"
           fill="${fill}" stroke="#0a0e14" stroke-width="1.5"
@@ -321,7 +321,7 @@ function makeIcon(droneId, armed, airborne) {
         ${armed ? `<circle cx="16" cy="14" r="2.5" fill="#0a0e14" opacity="0.6"/>` : ''}
       </svg>
     </div>`,
-    iconSize: [32, 44], iconAnchor: [16, 44],
+    iconSize: [44, 60], iconAnchor: [22, 60],
   });
 }
 
@@ -344,18 +344,27 @@ map.on('click', e => {
   }).addTo(map).bindPopup(`🎯 목표: ${lat}, ${lon}`).openPopup();
 });
 
+// 홈 좌표(서울 시청) — GPS 미수신 시 마커 폴백 위치. start_sitl.sh --home과 일치.
+const HOME_LATLON = [37.566535, 126.977969];
+
 function updateMarker(t) {
-  if (!t.lat || !t.lon) return;
+  // GPS 미수신(lat/lon=0) 상태에서도 마커를 홈 좌표에 띄운다.
+  // 이렇게 안 하면 새로고침 후 GPS 잠기기 전까지 드론 마커가 사라져 보인다(문제 #3).
+  const hasFix = !!(t.lat && t.lon);
+  const pos    = hasFix ? [t.lat, t.lon] : HOME_LATLON;
+
   const airborne = (t.relative_alt ?? 0) >= 2;
   const icon = makeIcon(t.drone_id, t.armed, airborne);
   if (!markers[t.drone_id]) {
-    markers[t.drone_id] = L.marker([t.lat, t.lon], { icon }).addTo(map).bindPopup('');
+    markers[t.drone_id] = L.marker(pos, { icon, opacity: hasFix ? 1 : 0.55 }).addTo(map).bindPopup('');
   }
   const m = markers[t.drone_id];
-  m.setLatLng([t.lat, t.lon]);
+  m.setLatLng(pos);
   m.setIcon(icon);
+  m.setOpacity(hasFix ? 1 : 0.55);   // GPS 미수신이면 반투명으로 "위치 추정" 표시
   m.setPopupContent(
-    `<b style="color:${DRONE_COLORS[t.drone_id]}">${t.drone_id}</b><br>` +
+    `<b style="color:${DRONE_COLORS[t.drone_id]}">${t.drone_id}</b>` +
+    `${hasFix ? '' : ' <span style="color:#eed49f">📡 GPS 대기(홈 위치 표시)</span>'}<br>` +
     `<span style="color:#6e738d">모드</span> ${t.mode || '—'}&nbsp;&nbsp;` +
     `${t.armed ? '<b style="color:#a6e3a1">ARMED</b>' : '<span style="color:#6e738d">DISARMED</span>'}<br>` +
     `<span style="color:#6e738d">고도</span> ${t.relative_alt?.toFixed(1)} m&nbsp;&nbsp;` +
@@ -426,15 +435,15 @@ function renderDroneCards() {
       </div>
       <div class="card-metrics">
         <div class="metric">
-          <div class="metric-val">${t?.relative_alt?.toFixed(0) ?? '—'}<span style="font-size:9px;color:#4a5080"> m</span></div>
+          <div class="metric-val">${t?.relative_alt?.toFixed(0) ?? '—'}<span style="font-size:15px;color:#4a5080"> m</span></div>
           <div class="metric-lbl">고도 REL</div>
         </div>
         <div class="metric">
-          <div class="metric-val">${t?.battery_pct?.toFixed(0) ?? '—'}<span style="font-size:9px;color:#4a5080"> %</span></div>
+          <div class="metric-val">${t?.battery_pct?.toFixed(0) ?? '—'}<span style="font-size:15px;color:#4a5080"> %</span></div>
           <div class="metric-lbl">배터리 BAT</div>
         </div>
         <div class="metric">
-          <div class="metric-val">${gsStr}<span style="font-size:9px;color:#4a5080"> m/s</span></div>
+          <div class="metric-val">${gsStr}<span style="font-size:15px;color:#4a5080"> m/s</span></div>
           <div class="metric-lbl">속도 SPD</div>
         </div>
         <div class="metric">
@@ -637,7 +646,9 @@ const ACK_FAIL_REASON = {
 
 async function sendCmd(cmd, params = {}, droneId) {
   if (!droneId) return;
-  addLog(`→ ${cmd}`, 'info', droneId);
+  const paramStr = Object.keys(params).length ? ` ${JSON.stringify(params)}` : '';
+  addLog(`→ ${cmd}${paramStr}`, 'info', droneId);
+  console.log(`[CMD] 전송 → ${droneId} ${cmd}`, params);
   try {
     const r = await fetch('/api/command', {
       method: 'POST',
@@ -645,9 +656,18 @@ async function sendCmd(cmd, params = {}, droneId) {
       body: JSON.stringify({ drone_id: droneId, cmd, params }),
     });
     const d = await r.json();
-    if (!r.ok) addLog(`전송 오류: ${d.error || r.statusText}`, 'fail', droneId);
+    console.log(`[CMD] 응답 ← ${droneId} ${cmd}: HTTP ${r.status}`, d);
+    if (!r.ok) {
+      // 503 = SITL 미연결, 그 외 상세 사유를 화면에 그대로 노출
+      const reason = d.error || d.detail || r.statusText;
+      addLog(`✖ ${cmd} 실패 (HTTP ${r.status}): ${reason}`, 'fail', droneId);
+    } else {
+      // 성공 시에도 서버가 SITL로 실제 전송했음을 화면에 확인 표시
+      addLog(`✓ ${cmd} 서버 접수됨 (${d.status || 'sent'}) — ACK 대기`, 'ok', droneId);
+    }
   } catch (e) {
-    addLog(`네트워크 오류: ${e.message}`, 'fail', droneId);
+    console.error(`[CMD] 네트워크 오류 ${droneId} ${cmd}`, e);
+    addLog(`✖ 네트워크 오류: ${e.message}`, 'fail', droneId);
   }
 }
 

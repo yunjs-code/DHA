@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>BLUE AGENT — 방어 대시보드</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Courier New', monospace; background: #0a0e14; color: #cdd6f4; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+/* ── 헤더 ── */
+header {
+  background: #1e2030; padding: 14px 24px;
+  border-bottom: 2px solid #c6a0f6;
+  display: flex; align-items: center; gap: 20px; flex-shrink: 0;
+}
+header h1 { font-size: 24px; color: #c6a0f6; letter-spacing: 2px; }
+.dot { width: 14px; height: 14px; border-radius: 50%; background: #ed8796; flex-shrink: 0; transition: background 0.3s; }
+.dot.on { background: #a6e3a1; }
+#ws-status { font-size: 17px; color: #6e738d; }
+.header-right { margin-left: auto; font-size: 17px; color: #6e738d; }
+
+/* ── 레이아웃 ── */
+.main { display: flex; flex: 1; overflow: hidden; }
+#map { flex: 1; z-index: 0; }
+.panel { width: 460px; background: #161922; display: flex; flex-direction: column; border-left: 1px solid #2a2f45; overflow-y: auto; overflow-x: hidden; flex-shrink: 0; }
+
+/* ── 섹션 공통 ── */
+.sec { padding: 14px 16px; border-bottom: 1px solid #2a2f45; flex-shrink: 0; }
+.sec-title {
+  font-size: 15px; color: #4a5080; letter-spacing: 2px;
+  text-transform: uppercase; margin-bottom: 10px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+
+/* ── 드론 카드 ── */
+.drone-card {
+  background: #1e2030; border: 2px solid #2a2f45; border-radius: 6px;
+  padding: 12px 14px; margin-bottom: 10px; cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+  position: relative; overflow: hidden; user-select: none;
+}
+.drone-card:last-child { margin-bottom: 0; }
+.drone-card:hover { background: #20253a; }
+.drone-card.disconnected { opacity: 0.45; }
+.drone-card.selected {
+  background: #1a2245;
+  border-color: var(--sel-color, #c6a0f6) !important;
+  box-shadow: 0 0 0 2px var(--sel-color, #c6a0f6), 0 2px 16px rgba(198, 160, 246, 0.25);
+}
+.card-top { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.card-id { font-size: 22px; font-weight: bold; letter-spacing: 1px; min-width: 54px; }
+.risk-badge {
+  font-size: 14px; padding: 3px 12px; border-radius: 10px;
+  border: 1px solid currentColor; margin-left: auto; letter-spacing: 0.5px;
+}
+.card-sub { font-size: 14px; color: #6e738d; }
+
+/* ── 대상 선택 바 ── */
+.target-bar {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 16px; border-bottom: 1px solid #2a2f45;
+  flex-shrink: 0; flex-wrap: wrap;
+}
+.target-label { font-size: 16px; color: #6e738d; }
+.target-name  { font-size: 19px; color: #c6a0f6; font-weight: bold; flex: 1; }
+.target-btns  { display: flex; gap: 8px; }
+.btn-sel, .btn-desel {
+  font-size: 15px; padding: 6px 16px;
+  background: #2a2f45; color: #c6a0f6; border: 1px solid #3a4060;
+  border-radius: 3px; cursor: pointer; letter-spacing: 0.5px;
+}
+.btn-sel:hover, .btn-desel:hover { background: #3a4060; }
+.btn-sel.active { background: #241a40; border-color: #c6a0f6; }
+
+/* ── Current Attack ── */
+.attack-box {
+  border-radius: 6px; padding: 14px; text-align: center;
+  background: #12151e; border: 2px solid #2a2f45;
+}
+.attack-box.safe      { border-color: #a6e3a1; }
+.attack-box.warning   { border-color: #eed49f; }
+.attack-box.critical  { border-color: #f5a97f; }
+.attack-box.emergency { border-color: #ed8796; animation: pulse 1s infinite; }
+@keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(237,135,150,0.5);} 50% { box-shadow: 0 0 0 6px rgba(237,135,150,0);} }
+.attack-title { font-size: 20px; font-weight: bold; margin-bottom: 4px; }
+.attack-sub   { font-size: 14px; color: #6e738d; }
+
+/* ── Risk Score ── */
+.risk-bar-track { background: #12151e; border-radius: 8px; height: 22px; overflow: hidden; border: 1px solid #2a2f45; margin-top: 8px; }
+.risk-bar-fill  { height: 100%; transition: width 0.4s, background 0.4s; }
+.risk-score-num { font-size: 30px; font-weight: bold; text-align: center; margin-top: 6px; }
+.risk-level-lbl { font-size: 15px; text-align: center; letter-spacing: 1px; color: #6e738d; }
+
+/* ── Active Rules ── */
+.rule-item {
+  background: #1e2030; border-left: 3px solid #3a3f55; border-radius: 4px;
+  padding: 8px 10px; margin-bottom: 8px; font-size: 14px;
+}
+.rule-item:last-child { margin-bottom: 0; }
+.rule-item.LOW      { border-left-color: #6e738d; }
+.rule-item.MEDIUM   { border-left-color: #eed49f; }
+.rule-item.HIGH     { border-left-color: #f5a97f; }
+.rule-item.CRITICAL { border-left-color: #ed8796; }
+.rule-head { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+.rule-id  { color: #cdd6f4; font-weight: bold; }
+.rule-sev { font-size: 12px; padding: 1px 8px; border-radius: 8px; letter-spacing: 0.5px; }
+.rule-sev.LOW      { color: #6e738d; border: 1px solid #6e738d; }
+.rule-sev.MEDIUM   { color: #eed49f; border: 1px solid #eed49f; }
+.rule-sev.HIGH     { color: #f5a97f; border: 1px solid #f5a97f; }
+.rule-sev.CRITICAL { color: #ed8796; border: 1px solid #ed8796; }
+.rule-msg  { color: #a6adc8; margin-bottom: 4px; }
+.mitre-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+.mitre-tag { font-size: 11px; padding: 2px 7px; border-radius: 6px; background: #12151e; color: #8aadf4; border: 1px solid #2a3050; }
+.mitre-tag.ics { color: #c6a0f6; }
+.mitre-tag.d3f { color: #a6e3a1; }
+.empty-msg { color: #4a5080; font-size: 14px; text-align: center; padding: 8px 0; }
+
+/* ── 방어 조치 버튼 ── */
+.cmd-sec { padding: 16px 16px; border-bottom: 1px solid #2a2f45; flex-shrink: 0; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+button {
+  background: #1e2030; color: #cdd6f4; border: 1px solid #3a3f55;
+  padding: 12px 12px; font-family: inherit; font-size: 18px; cursor: pointer;
+  border-radius: 5px; transition: all 0.12s; text-align: center; line-height: 1.3;
+}
+button:hover:not(:disabled) { filter: brightness(1.25); background: #252a40; }
+button:disabled { opacity: 0.25; cursor: not-allowed; }
+.en { font-size: 12px; color: inherit; opacity: 0.65; display: block; letter-spacing: 1px; margin-top: 4px; }
+.block    { border-color: #ed8796; color: #ed8796; }
+.unblock  { border-color: #a6e3a1; color: #a6e3a1; }
+.force-rtl{ border-color: #f5a97f; color: #f5a97f; }
+.disconnect{ border-color: #6e738d; color: #6e738d; }
+
+/* ── Timeline ── */
+.timeline-sec { display: flex; flex-direction: column; flex: none; min-height: 0; }
+#timeline { flex: none; max-height: 320px; overflow-y: auto; padding: 4px 0; }
+.tl-entry {
+  padding: 6px 16px; font-size: 14px; line-height: 1.5;
+  border-bottom: 1px solid #12151e; display: flex; gap: 10px; flex-wrap: wrap;
+}
+.tl-ts  { color: #4a5080; flex-shrink: 0; }
+.tl-did { min-width: 60px; flex-shrink: 0; font-weight: bold; }
+.tl-msg { flex: 1; word-break: break-all; }
+.tl-entry.LOW      .tl-msg { color: #6e738d; }
+.tl-entry.MEDIUM   .tl-msg { color: #eed49f; }
+.tl-entry.HIGH     .tl-msg { color: #f5a97f; }
+.tl-entry.CRITICAL .tl-msg { color: #ed8796; }
+.tl-entry.action   .tl-msg { color: #8aadf4; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>BLUE AGENT / 방어 대시보드</h1>
+  <span class="dot" id="dot"></span>
+  <span id="ws-status">연결 중...</span>
+  <span class="header-right" id="header-time"></span>
+</header>
+
+<div class="main">
+  <div id="map"></div>
+
+  <div class="panel">
+
+    <!-- 드론 현황 -->
+    <div class="sec">
+      <div class="sec-title">드론 현황 <span id="conn-summary" style="color:#6e738d">—</span></div>
+      <div id="drone-cards"></div>
+    </div>
+
+    <!-- 대상 선택 -->
+    <div class="target-bar">
+      <span class="target-label">조치 대상</span>
+      <span class="target-name" id="target-name">—</span>
+      <div class="target-btns">
+        <button class="btn-sel" id="btn-all">전체</button>
+        <button class="btn-desel" id="btn-none">해제</button>
+      </div>
+    </div>
+
+    <!-- Current Attack -->
+    <div class="sec">
+      <div class="sec-title">현재 공격 상태 CURRENT ATTACK</div>
+      <div class="attack-box safe" id="attack-box">
+        <div class="attack-title" id="attack-title">선택된 드론 없음</div>
+        <div class="attack-sub" id="attack-sub">드론을 선택하세요</div>
+      </div>
+    </div>
+
+    <!-- Risk Score -->
+    <div class="sec">
+      <div class="sec-title">위험도 점수 RISK SCORE</div>
+      <div class="risk-score-num" id="risk-score">—</div>
+      <div class="risk-level-lbl" id="risk-level">—</div>
+      <div class="risk-bar-track"><div class="risk-bar-fill" id="risk-bar" style="width:0%;background:#4a5080"></div></div>
+    </div>
+
+    <!-- Active Rules -->
+    <div class="sec">
+      <div class="sec-title">활성 룰 / MITRE 매핑 ACTIVE RULES</div>
+      <div id="active-rules"><div class="empty-msg">활성화된 룰 없음</div></div>
+    </div>
+
+    <!-- 방어 조치 버튼 -->
+    <div class="cmd-sec">
+      <div class="sec-title">방어 조치 DEFENSE ACTION</div>
+      <div class="grid2">
+        <button class="block"      data-action="BLOCK"      disabled>차단<span class="en">BLOCK</span></button>
+        <button class="unblock"    data-action="UNBLOCK"    disabled>차단 해제<span class="en">UNBLOCK</span></button>
+        <button class="force-rtl"  data-action="FORCE_RTL"  disabled>강제 귀환<span class="en">FORCE_RTL</span></button>
+        <button class="disconnect" data-action="DISCONNECT" disabled>강제 연결 해제<span class="en">DISCONNECT</span></button>
+      </div>
+    </div>
+
+    <!-- Timeline -->
+    <div class="timeline-sec">
+      <div class="sec-title" style="padding:12px 16px 0">타임라인 TIMELINE</div>
+      <div id="timeline"></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ── 상태 ────────────────────────────────────────────────────────────
+const states     = {};   // drone_id -> telemetry
+const detections = {};   // drone_id -> 최근 detection 메시지
+const activeRuleKeys = {}; // drone_id -> Set(rule_id) 직전 활성 룰
+const markers    = {};
+let   DRONE_IDS  = [];
+const selectedDrones = new Set();
+const timeline   = [];
+
+const LEVEL_COLOR = { SAFE: '#a6e3a1', WARNING: '#eed49f', CRITICAL: '#f5a97f', EMERGENCY: '#ed8796' };
+const LEVEL_KO    = { SAFE: '정상', WARNING: '경계', CRITICAL: '위험', EMERGENCY: '비상' };
+
+// ── 시계 ───────────────────────────────────────────────────────────
+setInterval(() => {
+  document.getElementById('header-time').textContent =
+    new Date().toTimeString().slice(0, 8);
+}, 1000);
+
+// ── Leaflet 지도 ───────────────────────────────────────────────────
+const map = L.map('map').setView([37.5665, 126.978], 14);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© OpenStreetMap', maxZoom: 19,
+}).addTo(map);
+
+const HOME_LATLON = [37.566535, 126.977969];
+
+function makeIcon(droneId, level) {
+  const color = LEVEL_COLOR[level] || '#6e738d';
+  const num   = droneId.replace('drone-0', 'D');
+  return L.divIcon({
+    className: '',
+    html: `<div style="position:relative;width:44px;height:60px">
+      <div style="position:absolute;top:0;left:50%;transform:translateX(-50%);
+        background:#1e2030;color:${color};font-size:15px;font-weight:bold;
+        padding:2px 7px;border-radius:4px;border:1px solid ${color};
+        white-space:nowrap;font-family:monospace">${num}</div>
+      <svg width="44" height="38" viewBox="0 0 32 28" xmlns="http://www.w3.org/2000/svg"
+           style="position:absolute;bottom:0;left:0">
+        <polygon points="16,2 30,26 16,20 2,26" fill="${color}" stroke="#0a0e14" stroke-width="1.5"/>
+      </svg>
+    </div>`,
+    iconSize: [44, 60], iconAnchor: [22, 60],
+  });
+}
+
+function updateMarker(t) {
+  const hasFix = !!(t.lat && t.lon);
+  const pos    = hasFix ? [t.lat, t.lon] : HOME_LATLON;
+  const level  = detections[t.drone_id]?.level || 'SAFE';
+  const icon   = makeIcon(t.drone_id, level);
+  if (!markers[t.drone_id]) {
+    markers[t.drone_id] = L.marker(pos, { icon, opacity: hasFix ? 1 : 0.55 }).addTo(map).bindPopup('');
+  }
+  const m = markers[t.drone_id];
+  m.setLatLng(pos);
+  m.setIcon(icon);
+  m.setOpacity(hasFix ? 1 : 0.55);
+  m.setPopupContent(
+    `<b style="color:${LEVEL_COLOR[level]}">${t.drone_id}</b> — ${LEVEL_KO[level] || level}<br>` +
+    `<span style="color:#6e738d">모드</span> ${t.mode || '—'}&nbsp;&nbsp;` +
+    `${t.armed ? '<b style="color:#a6e3a1">ARMED</b>' : '<span style="color:#6e738d">DISARMED</span>'}`
+  );
+}
+
+// ── 드론 카드 렌더링 ────────────────────────────────────────────────
+function renderDroneCards() {
+  const container = document.getElementById('drone-cards');
+  let connected = 0;
+  container.innerHTML = '';
+
+  DRONE_IDS.forEach(id => {
+    const t     = states[id];
+    const det   = detections[id];
+    const conn  = !!t?.connected;
+    const level = det?.level || 'SAFE';
+    const color = LEVEL_COLOR[level];
+    if (conn) connected++;
+
+    const isSelected = selectedDrones.has(id);
+    const card = document.createElement('div');
+    card.className = `drone-card${!conn ? ' disconnected' : ''}${isSelected ? ' selected' : ''}`;
+    card.dataset.id = id;
+    if (isSelected) card.style.setProperty('--sel-color', color);
+
+    card.innerHTML = `
+      <div class="card-top">
+        <span class="card-id" style="color:${conn ? '#cdd6f4' : '#6e738d'}">${id.replace('drone-0','D')}</span>
+        <span class="risk-badge" style="color:${color};border-color:${color}">${conn ? (LEVEL_KO[level] || level) : '연결 끊김'}</span>
+      </div>
+      <div class="card-sub">점수 ${conn ? (det?.score?.toFixed(1) ?? '0.0') : '—'} · 모드 ${conn ? (t?.mode || '—') : '—'}</div>
+    `;
+    container.appendChild(card);
+  });
+
+  const total = DRONE_IDS.length;
+  document.getElementById('conn-summary').textContent = `${connected}/${total} 연결됨`;
+  document.getElementById('conn-summary').style.color =
+    connected === total ? '#a6e3a1' : connected > 0 ? '#eed49f' : '#ed8796';
+}
+
+// ── 다중 선택 로직 ──────────────────────────────────────────────────
+function toggleDrone(id) {
+  selectedDrones.has(id) ? selectedDrones.delete(id) : selectedDrones.add(id);
+  refreshAll();
+}
+function selectAll() {
+  DRONE_IDS.forEach(id => selectedDrones.add(id));
+  refreshAll();
+}
+function deselectAll() {
+  selectedDrones.clear();
+  refreshAll();
+}
+function refreshAll() {
+  updateTargetBar();
+  renderDroneCards();
+  renderAttackPanel();
+  renderRiskPanel();
+  renderActiveRules();
+  refreshBtns();
+}
+
+function updateTargetBar() {
+  const sel    = [...selectedDrones];
+  const nameEl = document.getElementById('target-name');
+  const btnAll = document.getElementById('btn-all');
+  btnAll.classList.toggle('active', sel.length > 0 && sel.length === DRONE_IDS.length);
+
+  if (sel.length === 0) {
+    nameEl.textContent = '선택 없음'; nameEl.style.color = '#6e738d';
+  } else if (sel.length === 1) {
+    nameEl.textContent = `${sel[0].replace('drone-0','D')} 선택됨`; nameEl.style.color = '#c6a0f6';
+  } else {
+    nameEl.textContent = sel.map(d => d.replace('drone-0','D')).join(' + ') + ' 선택됨';
+    nameEl.style.color = '#c6a0f6';
+  }
+}
+
+document.getElementById('drone-cards').addEventListener('mousedown', e => {
+  if (e.button !== 0) return;
+  const card = e.target.closest('[data-id]');
+  if (card) toggleDrone(card.dataset.id);
+});
+document.getElementById('btn-all').addEventListener('click', selectAll);
+document.getElementById('btn-none').addEventListener('click', deselectAll);
+
+// ── 가장 심각한 룰 하나 고르기 ──────────────────────────────────────
+const SEV_RANK = { LOW: 0, MEDIUM: 1, HIGH: 2, CRITICAL: 3 };
+function topRule(rules) {
+  if (!rules || !rules.length) return null;
+  return [...rules].sort((a, b) => (SEV_RANK[b.severity] ?? 0) - (SEV_RANK[a.severity] ?? 0))[0];
+}
+function worstSelectedDetection() {
+  const sel = [...selectedDrones].filter(id => states[id]?.connected);
+  if (!sel.length) return null;
+  const LVL_RANK = { SAFE: 0, WARNING: 1, CRITICAL: 2, EMERGENCY: 3 };
+  let best = null;
+  sel.forEach(id => {
+    const det = detections[id];
+    if (!det) return;
+    if (!best || (LVL_RANK[det.level] ?? 0) > (LVL_RANK[best.level] ?? 0)) best = det;
+  });
+  return best;
+}
+
+// ── Current Attack 패널 ────────────────────────────────────────────
+function renderAttackPanel() {
+  const box   = document.getElementById('attack-box');
+  const title = document.getElementById('attack-title');
+  const sub   = document.getElementById('attack-sub');
+
+  if (selectedDrones.size === 0) {
+    box.className = 'attack-box safe';
+    title.textContent = '선택된 드론 없음';
+    sub.textContent = '드론을 선택하세요';
+    return;
+  }
+  const det = worstSelectedDetection();
+  const level = det?.level || 'SAFE';
+  box.className = `attack-box ${level.toLowerCase()}`;
+
+  const rule = topRule(det?.rules);
+  if (!rule) {
+    title.textContent = '정상 — 탐지된 공격 없음';
+    sub.textContent = `수준: ${LEVEL_KO[level] || level}`;
+  } else {
+    title.textContent = rule.message;
+    sub.textContent = `${rule.mitre?.attack || '미매핑'} · 수준: ${LEVEL_KO[level] || level}`;
+  }
+}
+
+// ── Risk Score 패널 ────────────────────────────────────────────────
+function renderRiskPanel() {
+  const scoreEl = document.getElementById('risk-score');
+  const levelEl = document.getElementById('risk-level');
+  const barEl   = document.getElementById('risk-bar');
+
+  const det = worstSelectedDetection();
+  if (!det) {
+    scoreEl.textContent = '—'; scoreEl.style.color = '#6e738d';
+    levelEl.textContent = '—';
+    barEl.style.width = '0%'; barEl.style.background = '#4a5080';
+    return;
+  }
+  const color = LEVEL_COLOR[det.level] || '#4a5080';
+  scoreEl.textContent = det.score.toFixed(1);
+  scoreEl.style.color = color;
+  levelEl.textContent = LEVEL_KO[det.level] || det.level;
+  barEl.style.width = `${Math.min(100, det.score)}%`;
+  barEl.style.background = color;
+}
+
+// ── Active Rules 패널 ──────────────────────────────────────────────
+function renderActiveRules() {
+  const container = document.getElementById('active-rules');
+  const det = worstSelectedDetection();
+  const rules = det?.rules || [];
+
+  if (!rules.length) {
+    container.innerHTML = '<div class="empty-msg">활성화된 룰 없음</div>';
+    return;
+  }
+  container.innerHTML = [...rules]
+    .sort((a, b) => (SEV_RANK[b.severity] ?? 0) - (SEV_RANK[a.severity] ?? 0))
+    .map(r => `
+      <div class="rule-item ${r.severity}">
+        <div class="rule-head">
+          <span class="rule-id">${r.rule_id}</span>
+          <span class="rule-sev ${r.severity}">${r.severity}</span>
+        </div>
+        <div class="rule-msg">${r.message}</div>
+        <div class="mitre-tags">
+          <span class="mitre-tag">${r.mitre?.attack || '미매핑'}</span>
+          <span class="mitre-tag ics">${r.mitre?.attack_ics || '미매핑'}</span>
+          <span class="mitre-tag d3f">${r.mitre?.d3fend || '미매핑'}</span>
+        </div>
+      </div>
+    `).join('');
+}
+
+// ── 방어 조치 버튼 ─────────────────────────────────────────────────
+const actionBtns = document.querySelectorAll('[data-action]');
+function refreshBtns() {
+  const anyConn = [...selectedDrones].some(id => states[id]?.connected);
+  actionBtns.forEach(b => b.disabled = selectedDrones.size === 0 || !anyConn);
+}
+
+actionBtns.forEach(b => b.addEventListener('click', () => {
+  const action = b.dataset.action;
+  [...selectedDrones].filter(id => states[id]?.connected).forEach(id => {
+    ws.send(JSON.stringify({ type: 'defense_action', drone_id: id, action }));
+    addTimeline({ ts: new Date().toTimeString().slice(0,8), drone_id: id, cls: 'action', text: `→ ${action} 전송` });
+  });
+}));
+
+// ── Timeline ───────────────────────────────────────────────────────
+function addTimeline(entry) {
+  timeline.push(entry);
+  if (timeline.length > 300) timeline.shift();
+  renderTimeline();
+}
+function renderTimeline() {
+  const el = document.getElementById('timeline');
+  el.innerHTML = timeline.slice(-150).reverse().map(e => `
+    <div class="tl-entry ${e.cls}">
+      <span class="tl-ts">${e.ts}</span>
+      <span class="tl-did" style="color:${e.drone_id ? '#c6a0f6' : '#4a5080'}">${e.drone_id ? e.drone_id.replace('drone-0','D') : 'SYS'}</span>
+      <span class="tl-msg">${e.text}</span>
+    </div>
+  `).join('');
+}
+
+// 새로 나타난(직전에는 없던) 룰만 타임라인에 rising-edge로 기록 —
+// detection 메시지가 20Hz로 계속 오므로 매번 다 넣으면 도배된다.
+function trackNewRules(msg) {
+  const prevKeys = activeRuleKeys[msg.drone_id] || new Set();
+  const nowKeys  = new Set(msg.rules.map(r => r.rule_id));
+  msg.rules.forEach(r => {
+    if (!prevKeys.has(r.rule_id)) {
+      addTimeline({
+        ts: new Date().toTimeString().slice(0,8),
+        drone_id: msg.drone_id,
+        cls: r.severity,
+        text: `[${msg.level}] ${r.rule_id} — ${r.message}`,
+      });
+    }
+  });
+  activeRuleKeys[msg.drone_id] = nowKeys;
+}
+
+// ── API: 드론 목록 로드 ────────────────────────────────────────────
+async function loadDrones() {
+  try {
+    const r    = await fetch('/api/drones');
+    const data = await r.json();
+    DRONE_IDS  = Object.keys(data).sort();
+    renderDroneCards();
+    updateTargetBar();
+  } catch (e) {
+    console.warn('드론 목록 로드 실패:', e);
+  }
+}
+
+// ── WebSocket ─────────────────────────────────────────────────────
+const dot  = document.getElementById('dot');
+const wsEl = document.getElementById('ws-status');
+let ws, retry;
+
+function connect() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(`${proto}//${location.host}/ws/blue_agent`);
+
+  ws.onopen = () => {
+    dot.classList.add('on');
+    wsEl.textContent = '연결됨';
+    clearTimeout(retry);
+    addTimeline({ ts: new Date().toTimeString().slice(0,8), drone_id: null, cls: 'action', text: 'WebSocket 연결됨' });
+  };
+
+  ws.onmessage = e => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === 'telemetry') {
+      states[msg.drone_id] = msg;
+      updateMarker(msg);
+      renderDroneCards();
+      refreshBtns();
+    } else if (msg.type === 'detection') {
+      detections[msg.drone_id] = msg;
+      trackNewRules(msg);
+      if (selectedDrones.has(msg.drone_id) || selectedDrones.size === 0) {
+        renderAttackPanel();
+        renderRiskPanel();
+        renderActiveRules();
+      }
+      renderDroneCards();
+    } else if (msg.type === 'defense_action_result') {
+      addTimeline({
+        ts: new Date().toTimeString().slice(0,8),
+        drone_id: msg.drone_id,
+        cls: msg.success ? 'action' : 'CRITICAL',
+        text: `${msg.action} 결과: ${msg.success ? '성공' : '실패'} — ${msg.message}`,
+      });
+    }
+  };
+
+  ws.onclose = () => {
+    dot.classList.remove('on');
+    wsEl.textContent = '재연결 중...';
+    addTimeline({ ts: new Date().toTimeString().slice(0,8), drone_id: null, cls: 'CRITICAL', text: '연결 끊김 — 3초 후 재연결' });
+    retry = setTimeout(connect, 3000);
+  };
+
+  ws.onerror = () => ws.close();
+}
+
+loadDrones().then(connect);
+</script>
+</body>
+</html>

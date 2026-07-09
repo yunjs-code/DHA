@@ -54,10 +54,14 @@ def decode(raw: bytes) -> dict | None:
     msg_id  = raw[7] | (raw[8] << 8) | (raw[9] << 16)
     payload = raw[_HDR_LEN: _HDR_LEN + payload_len]
 
+    incompat_flags = raw[2]
     base = {
-        "msg_id":  msg_id,
-        "sysid":   raw[5],
-        "compid":  raw[6],
+        "msg_id":         msg_id,
+        "sysid":          raw[5],
+        "compid":         raw[6],
+        "seq":            raw[4],
+        "incompat_flags": incompat_flags,
+        "signed":         bool(incompat_flags & 0x01),
     }
 
     try:

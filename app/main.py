@@ -16,6 +16,12 @@ from pydantic import BaseModel
 
 from app import mavlink as mav
 from app.sitl import SITLConnector
+from app.attacks import attack_runner, run_inject, run_gnss_spoof, run_blackout
+from app.blue_agent.event.engine import event_engine
+from app.blue_agent.risk.engine import risk_engine
+from app.blue_agent.ai.analyzer import threat_analyzer
+from app.blue_agent.response.engine import response_engine
+from app.blue_agent.services.dashboard_events import build_detection_message
 
 log = logging.getLogger(__name__)
 
@@ -57,6 +63,7 @@ class _WsManager:
 
 gcs_mgr  = _WsManager()
 att_mgr  = _WsManager()
+blue_mgr = _WsManager()
 
 # ── 브로드캐스트 루프 (20Hz) ──────────────────────────────────────────────────
 
@@ -71,6 +78,15 @@ async def _broadcast_loop() -> None:
                 parsed = mav.decode(raw)
                 if parsed is None:
                     continue
+                event = event_engine.ingest_packet(drone_id, parsed)
+                threat_analyzer.note_event(event)
+                assessment = risk_engine.process_event(event)
+                if assessment is not None:
+                    response_engine.on_assessment(assessment)
+                    analysis = threat_analyzer.on_assessment(assessment)
+                    if analysis is not None:
+                        log.warning("AI 위협 분석 (%s): %s", assessment.level, analysis)
+                    await blue_mgr.broadcast(build_detection_message(assessment))
                 await att_mgr.broadcast({
                     "type":      "packet",
                     "direction": "down",
@@ -90,11 +106,11 @@ async def _broadcast_loop() -> None:
                     "result":   ack["result"],
                 })
 
-            # GCS: 최신 상태 텔레메트리 (연결된 드론만)
+            # GCS + Attacker: 최신 상태 텔레메트리 (연결된 드론만)
             if not connector.is_ready():
                 continue
             s = connector.get_state()
-            await gcs_mgr.broadcast({
+            tele_msg = {
                 "type":         "telemetry",
                 "drone_id":     drone_id,
                 "lat":          s.get("lat", 0.0),
@@ -112,7 +128,10 @@ async def _broadcast_loop() -> None:
                 "mode":         s.get("mode", ""),
                 "connected":    s.get("connected", False),
                 "ekf_ok":       s.get("ekf_ok", False),
-            })
+            }
+            await gcs_mgr.broadcast(tele_msg)
+            await att_mgr.broadcast(tele_msg)
+            await blue_mgr.broadcast(tele_msg)
 
 
 def _strip_meta(parsed: dict) -> dict:
@@ -139,6 +158,7 @@ async def lifespan(app: FastAPI):
     log.info("=" * 60)
     for connector in DRONES.values():
         connector.start()
+    attack_runner.set_broadcast(att_mgr.broadcast)
     task = asyncio.create_task(_broadcast_loop())
     log.info("SITL 커넥터 %d대 시작, 브로드캐스트 루프 가동", len(DRONES))
     yield
@@ -176,6 +196,29 @@ async def ws_attacker(ws: WebSocket):
         att_mgr.disconnect(ws)
 
 
+@app.websocket("/ws/blue_agent")
+async def ws_blue_agent(ws: WebSocket):
+    await blue_mgr.connect(ws)
+    try:
+        while True:
+            raw = await ws.receive_text()
+            msg = json.loads(raw)
+            if msg.get("type") != "defense_action":
+                continue
+            drone_id = msg.get("drone_id")
+            action = msg.get("action")
+            result = response_engine.apply_manual_action(drone_id, action, connector=DRONES.get(drone_id))
+            await blue_mgr.broadcast({
+                "type": "defense_action_result",
+                "drone_id": result.drone_id,
+                "action": result.action,
+                "success": result.success,
+                "message": result.message,
+            })
+    except WebSocketDisconnect:
+        blue_mgr.disconnect(ws)
+
+
 # ── REST API ──────────────────────────────────────────────────────────────────
 
 @app.get("/api/drones")
@@ -187,6 +230,15 @@ async def api_drones():
         }
         for drone_id, c in DRONES.items()
     })
+
+
+@app.get("/api/debug")
+async def api_debug():
+    """SITL 연결 진단 정보. 60초가 지나도 연결 안 될 때 이 엔드포인트로 원인 확인."""
+    result = {}
+    for drone_id, c in DRONES.items():
+        result[drone_id] = c.get_debug_info()
+    return JSONResponse(result)
 
 
 class CommandRequest(BaseModel):
@@ -212,13 +264,20 @@ async def api_command(req: CommandRequest):
         log.warning("[API] SITL 미연결 — 명령 거부: %s", req.cmd)
         return JSONResponse({"error": "SITL 미연결"}, status_code=503)
 
+    if response_engine.is_blocked(req.drone_id):
+        log.warning("[API] BLOCK 상태 — 명령 거부: %s %s", req.drone_id, req.cmd)
+        return JSONResponse({"error": "드론이 BLOCK 상태입니다"}, status_code=403)
+
     # SET_MODE는 네이티브 set_mode_send 사용
     if req.cmd == "SET_MODE":
         _mode_map = {"STABILIZE": 0, "AUTO": 3, "GUIDED": 4, "LOITER": 5, "RTL": 6, "LAND": 9}
         mode_name = str(req.params.get("mode", "GUIDED")).upper()
         mode_id   = _mode_map.get(mode_name, 4)
         log.info("[API] SET_MODE: %s → mode_id=%d", mode_name, mode_id)
-        connector.send_set_mode(mode_id)
+        ok = connector.send_set_mode(mode_id)
+        if not ok:
+            log.error("[API] SET_MODE 전송 실패: %s", req.drone_id)
+            return JSONResponse({"error": "SITL 전송 실패"}, status_code=503)
         return JSONResponse({"status": "sent", "drone_id": req.drone_id, "cmd": req.cmd})
 
     sysid = state.get("sysid", 1)
@@ -228,7 +287,10 @@ async def api_command(req: CommandRequest):
         lon = float(req.params.get("lon", 0))
         alt = float(req.params.get("alt", 30))
         log.info("[API] GOTO → lat=%.6f lon=%.6f alt=%.1fm", lat, lon, alt)
-        connector.send_goto(lat, lon, alt)
+        ok = connector.send_goto(lat, lon, alt)
+        if not ok:
+            log.error("[API] GOTO 전송 실패: %s", req.drone_id)
+            return JSONResponse({"error": "SITL 전송 실패"}, status_code=503)
         return JSONResponse({"status": "sent", "drone_id": req.drone_id, "cmd": req.cmd})
 
     log.info("[API] encode_command: cmd=%s sysid=%d params=%s", req.cmd, sysid, req.params)
@@ -238,7 +300,10 @@ async def api_command(req: CommandRequest):
         return JSONResponse({"error": f"알 수 없는 명령: {req.cmd}"}, status_code=400)
 
     log.info("[API] SITL로 전송 중: %s %d bytes", req.cmd, len(raw))
-    connector.send_command(raw)
+    ok = connector.send_command(raw)
+    if not ok:
+        log.error("[API] 명령 전송 실패: %s", req.cmd)
+        return JSONResponse({"error": "SITL 전송 실패"}, status_code=503)
 
     # Attacker 화면에 명령 패킷 미러링 (↑ 방향)
     parsed = mav.decode(raw)
@@ -256,7 +321,67 @@ async def api_command(req: CommandRequest):
     return JSONResponse({"status": "sent", "drone_id": req.drone_id, "cmd": req.cmd})
 
 
+# ── 공격 API ─────────────────────────────────────────────────────────────────
+
+class AttackStartRequest(BaseModel):
+    drone_id: str = "drone-01"
+    scenario: str
+    params:   dict = {}
+
+
+@app.post("/api/attack/start")
+async def api_attack_start(req: AttackStartRequest):
+    drone_id = req.drone_id
+    scenario = req.scenario
+    params   = req.params
+
+    id_map = {
+        "inject":   f"att01_{drone_id}",
+        "gnss":     f"att02_{drone_id}",
+        "blackout": f"att03_{drone_id}",
+    }
+    attack_id = id_map.get(scenario)
+    if attack_id is None:
+        return JSONResponse({"error": f"Unknown scenario: {scenario}"}, status_code=400)
+    if attack_runner.is_running(attack_id):
+        return JSONResponse({"error": "Already running", "attack_id": attack_id}, status_code=409)
+
+    if scenario == "inject":
+        coro = run_inject(drone_id, params.get("cmd", "ARM"), params)
+    elif scenario == "gnss":
+        coro = run_gnss_spoof(drone_id,
+                              duration=int(params.get("duration", 60)),
+                              step_m=float(params.get("step_m", 1.0)),
+                              max_m=float(params.get("max_m", 200.0)))
+    elif scenario == "blackout":
+        coro = run_blackout(drone_id,
+                            warmup=int(params.get("warmup", 10)),
+                            watch=int(params.get("watch", 30)),
+                            do_reattack=bool(params.get("reattack", False)))
+
+    started = attack_runner.start(attack_id, coro)
+    log.info("[ATTACK] 시작: %s  scenario=%s  drone=%s", attack_id, scenario, drone_id)
+    return JSONResponse({"started": started, "attack_id": attack_id})
+
+
+class AttackStopRequest(BaseModel):
+    attack_id: str
+
+
+@app.post("/api/attack/stop")
+async def api_attack_stop(req: AttackStopRequest):
+    stopped = attack_runner.stop(req.attack_id)
+    log.info("[ATTACK] 중단: %s  stopped=%s", req.attack_id, stopped)
+    return JSONResponse({"stopped": stopped, "attack_id": req.attack_id})
+
+
+@app.get("/api/attack/status")
+async def api_attack_status():
+    return JSONResponse(attack_runner.status())
+
+
 # ── Static 파일 서빙 ──────────────────────────────────────────────────────────
 
-app.mount("/attacker", StaticFiles(directory="frontend/attacker", html=True), name="attacker")
-app.mount("/gcs",      StaticFiles(directory="frontend/gcs",      html=True), name="gcs")
+app.mount("/attacker",   StaticFiles(directory="frontend/attacker",   html=True), name="attacker")
+app.mount("/gcs",        StaticFiles(directory="frontend/gcs",        html=True), name="gcs")
+app.mount("/blue_agent", StaticFiles(directory="frontend/blue_agent", html=True), name="blue_agent")

